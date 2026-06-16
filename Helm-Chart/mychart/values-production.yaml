@@ -16,9 +16,11 @@ resources:
   requests:
     cpu: "1"
     memory: 1Gi
+    ephemeral-storage: 2Gi
   limits:
     cpu: "2"
     memory: 2Gi
+    ephemeral-storage: 4Gi
 
 # Health check configuration for production
 livenessProbe:
