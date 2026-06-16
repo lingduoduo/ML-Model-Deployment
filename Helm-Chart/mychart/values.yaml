@@ -156,5 +156,12 @@ podDisruptionBudget:
 nodeSelector: {}
 affinity: {}
 tolerations: []
+# Spread replicas across nodes for availability.
+# The labelSelector is injected automatically from the chart's selector labels;
+# do NOT add labelSelector here. Set to [] to disable.
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
 volumes: []
 volumeMounts: []

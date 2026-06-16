@@ -132,3 +132,13 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- /* kindOf guard: `--set 'topologySpreadConstraints=[]'` passes the string "[]", not a slice; range on a string fails. */}}
+      {{- if and (eq (kindOf .Values.topologySpreadConstraints) "slice") .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- range .Values.topologySpreadConstraints }}
+        - {{ omit . "labelSelector" | toYaml | nindent 10 | trim }}
+          labelSelector:
+            matchLabels:
+              {{- include "mychart.selectorLabels" $ | nindent 14 }}
+        {{- end }}
+      {{- end }}
