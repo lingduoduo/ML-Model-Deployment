@@ -13,13 +13,14 @@ spec:
       {{- include "mychart.selectorLabels" . | nindent 6 }}
   template:
     metadata:
-      {{- with .Values.podAnnotations }}
+      {{- if or .Values.podAnnotations .Values.deployTimestamp.enabled }}
       annotations:
+        {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
-        deployment.kubernetes.io/timestamp: {{ now | date "2006-01-02T15:04:05Z07:00" | quote }}
-      {{- else }}
-      annotations:
-        deployment.kubernetes.io/timestamp: {{ now | date "2006-01-02T15:04:05Z07:00" | quote }}
+        {{- end }}
+        {{- if .Values.deployTimestamp.enabled }}
+        mychart.io/deploy-timestamp: {{ now | date "2006-01-02T15:04:05Z07:00" | quote }}
+        {{- end }}
       {{- end }}
       labels:
         {{- include "mychart.labels" . | nindent 8 }}

@@ -22,6 +22,13 @@ podAnnotations:
 
 podLabels: {}
 
+# When enabled, stamps each pod template with a render-time timestamp annotation.
+# This makes every `helm upgrade` produce a new pod template, forcing a rollout.
+# Disabled by default so renders are deterministic (no GitOps/ArgoCD drift, no
+# rollout when nothing actually changed).
+deployTimestamp:
+  enabled: false
+
 # Security context for pods and containers
 podSecurityContext:
   runAsNonRoot: false
@@ -31,6 +38,9 @@ podSecurityContext:
 securityContext:
   allowPrivilegeEscalation: false
   readOnlyRootFilesystem: false
+  capabilities:
+    drop:
+      - ALL
 
 container:
   port: 8080
@@ -142,12 +152,5 @@ podDisruptionBudget:
 nodeSelector: {}
 affinity: {}
 tolerations: []
-volumeMounts: []
-volumes: []
-
 volumes: []
 volumeMounts: []
-
-nodeSelector: {}
-tolerations: []
-affinity: {}
