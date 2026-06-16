@@ -1,3 +1,4 @@
+# Override tag with an immutable image tag or digest in CI/CD.
 image:
   repository: ghcr.io/example/model-server
   tag: "1.0.0"

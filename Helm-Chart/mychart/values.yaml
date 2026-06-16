@@ -3,6 +3,8 @@ replicaCount: 1
 image:
   repository: your-docker-registry/model-server
   pullPolicy: IfNotPresent
+  # Pin an immutable tag or digest per environment for safe rollbacks.
+  # "latest" is a non-production default only.
   tag: "latest"
 
 imagePullSecrets: []
