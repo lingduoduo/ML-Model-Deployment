@@ -19,6 +19,26 @@
 - Docker container is a runnable instance of an image. By default, a conatiner is relatively well isolated from other containers and its host machine. When a container is removed, any changes to its state that are not stored in persistent storage disappear. Containers is lightweight and portable encapsulations of an environment in which to. run applications. If an image is a class, then a container is an instance of a class - a runtime object.  Container are created from images. Inside a container, if has all teh ibnaries and dependencies to run the application.
 Docker
 
+```
+# List running containers
+docker ps
+
+# List all images and their sizes
+docker images
+
+# Remove unused images (reclaim disk space)
+docker system prune -a
+
+# Check GPU usage inside a running container
+docker exec -it <container_id> nvidia-smi
+
+# Copy a file from container to host
+docker cp <container_id>:/workspace/results.csv ./results.csv
+
+# View container logs
+docker logs -f <container_id>
+```
+
 https://docs.docker.com/engine/reference/commandline/build/
 
 https://docs.docker.com/engine/reference/builder/

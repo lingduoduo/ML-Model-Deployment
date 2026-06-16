@@ -1,29 +1,36 @@
-FROM gcr.io/kubeflow-platform/spotify-kubeflow:0.5.4-dev0-py3
+FROM python:3.12-slim-bookworm
 
-RUN apt-get update -y && \
-    apt-get install build-essential -y && \
-    apt-get install gcc gfortran libgomp1 -y
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
 
-COPY base-component-requirements.txt /ml/base-component-requirements.txt
-ENV BASE_PIP_REQUIREMENTS /ml/base-component-requirements.txt
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    curl \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
-COPY docker/xgboost/extra-requirements.txt extra-requirements.txt
-RUN pip install -r extra-requirements.txt --index-url https://pypi.spotify.net/simple/ --upgrade
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
-ENV EXTRA_PIP_REQUIREMENTS "/ml/extra-requirements.txt"
+RUN pip install --no-cache-dir \
+    torch==2.3.1 \
+    torchvision==0.18.1 \
+    torchaudio==2.3.1
 
-COPY ./src/spotify_kubeflow /ml/spotify_kubeflow
+RUN pip install --no-cache-dir \
+    numpy \
+    pandas \
+    scikit-learn \
+    matplotlib \
+    jupyter \
+    transformers \
+    datasets \
+    accelerate \
+    safetensors
 
-ENV PYTHONPATH "${PYTHONPATH}:/ml"
-WORKDIR /ml
+WORKDIR /workspace
 
-ENTRYPOINT ["python", "spotify_kubeflow/component/sdk/execution/run_component.py"]
+VOLUME ["/workspace", "/models"]
 
+EXPOSE 8888
 
-FROM ling:base
-RUN apt-get update -y && \
-	apt-get install -y && \
-	git \
-	vim \
-
-CMD ["echo", "hello world"]
+CMD ["python"]
