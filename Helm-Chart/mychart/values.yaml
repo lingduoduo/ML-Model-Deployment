@@ -142,12 +142,5 @@ podDisruptionBudget:
 nodeSelector: {}
 affinity: {}
 tolerations: []
-volumeMounts: []
-volumes: []
-
 volumes: []
 volumeMounts: []
-
-nodeSelector: {}
-tolerations: []
-affinity: {}
