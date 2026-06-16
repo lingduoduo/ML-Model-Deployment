@@ -29,24 +29,6 @@ jobs:
 
       - name: Validate Helm chart
         env:
-          DEPLOY_ENVIRONMENT: staging
           IMAGE_REPOSITORY: ${{ vars.IMAGE_REPOSITORY || 'ghcr.io/example/model-server' }}
           IMAGE_TAG: ${{ github.sha }}
-        run: |
-          VALUES_FILE="${CHART_PATH}/values-${DEPLOY_ENVIRONMENT}.yaml"
-
-          if [ ! -f "${VALUES_FILE}" ]; then
-            echo "Values file ${VALUES_FILE} does not exist"
-            exit 1
-          fi
-
-          helm lint "${CHART_PATH}" \
-            -f "${VALUES_FILE}" \
-            --set "image.repository=${IMAGE_REPOSITORY}" \
-            --set "image.tag=${IMAGE_TAG}"
-
-          helm template "${RELEASE_NAME}" "${CHART_PATH}" \
-            --namespace "${KUBE_NAMESPACE}" \
-            -f "${VALUES_FILE}" \
-            --set "image.repository=${IMAGE_REPOSITORY}" \
-            --set "image.tag=${IMAGE_TAG}" >/dev/null
+        run: "${CHART_PATH}/scripts/verify-render.sh"

@@ -13,15 +13,15 @@ spec:
       {{- include "mychart.selectorLabels" . | nindent 6 }}
   template:
     metadata:
-      {{- if or .Values.podAnnotations .Values.deployTimestamp.enabled }}
       annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
         {{- if .Values.deployTimestamp.enabled }}
         mychart.io/deploy-timestamp: {{ now | date "2006-01-02T15:04:05Z07:00" | quote }}
         {{- end }}
-      {{- end }}
       labels:
         {{- include "mychart.labels" . | nindent 8 }}
         {{- with .Values.podLabels }}
@@ -93,29 +93,35 @@ spec:
           {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
-          {{- if or .Values.persistence.enabled .Values.volumeMounts }}
+          {{- if or .Values.persistence.enabled .Values.writableTmp.enabled .Values.volumeMounts }}
           volumeMounts:
             {{- if .Values.persistence.enabled }}
             - name: model-storage
               mountPath: {{ .Values.persistence.mountPath }}
             {{- end }}
+            {{- if .Values.writableTmp.enabled }}
+            - name: tmp
+              mountPath: /tmp
+            {{- end }}
             {{- with .Values.volumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           {{- end }}
-      {{- if or .Values.persistence.enabled .Values.volumes }}
+      {{- if or .Values.persistence.enabled .Values.writableTmp.enabled .Values.volumes }}
       volumes:
         {{- if .Values.persistence.enabled }}
         - name: model-storage
           persistentVolumeClaim:
             claimName: {{ .Values.persistence.existingClaim | default (printf "%s-model-storage" (include "mychart.fullname" .)) }}
         {{- end }}
+        {{- if .Values.writableTmp.enabled }}
+        - name: tmp
+          emptyDir:
+            sizeLimit: {{ .Values.writableTmp.sizeLimit }}
+        {{- end }}
         {{- with .Values.volumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
-      {{- else }}
-      volumes:
-        []
       {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
@@ -128,4 +134,14 @@ spec:
       {{- with .Values.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- /* kindOf guard: `--set 'topologySpreadConstraints=[]'` passes the string "[]", not a slice; range on a string fails. */}}
+      {{- if and (eq (kindOf .Values.topologySpreadConstraints) "slice") .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- range .Values.topologySpreadConstraints }}
+        - {{ omit . "labelSelector" | toYaml | nindent 10 | trim }}
+          labelSelector:
+            matchLabels:
+              {{- include "mychart.selectorLabels" $ | nindent 14 }}
+        {{- end }}
       {{- end }}

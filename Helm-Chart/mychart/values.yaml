@@ -3,6 +3,8 @@ replicaCount: 1
 image:
   repository: your-docker-registry/model-server
   pullPolicy: IfNotPresent
+  # Pin an immutable tag or digest per environment for safe rollbacks.
+  # "latest" is a non-production default only.
   tag: "latest"
 
 imagePullSecrets: []
@@ -31,16 +33,27 @@ deployTimestamp:
 
 # Security context for pods and containers
 podSecurityContext:
-  runAsNonRoot: false
+  runAsNonRoot: true
   runAsUser: 1000
   fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
 
 securityContext:
   allowPrivilegeEscalation: false
-  readOnlyRootFilesystem: false
+  readOnlyRootFilesystem: true
   capabilities:
     drop:
       - ALL
+
+# Writable scratch space mounted at /tmp.
+# Required because readOnlyRootFilesystem is true by default.
+# If your app writes outside /tmp, add those paths via volumes/volumeMounts
+# or set securityContext.readOnlyRootFilesystem: false.
+writableTmp:
+  enabled: true
+  # Node ephemeral storage cap for the /tmp emptyDir, e.g. 256Mi or 1Gi.
+  sizeLimit: 1Gi
 
 container:
   port: 8080
@@ -104,9 +117,21 @@ resources:
   requests:
     cpu: 250m
     memory: 512Mi
+    ephemeral-storage: 1Gi
   limits:
     cpu: "1"
     memory: 1Gi
+    ephemeral-storage: 2Gi
+    # For GPU model serving, add a GPU limit directly under limits above, e.g.:
+    #   nvidia.com/gpu: 1
+# To schedule GPU pods onto GPU nodes, set the top-level nodeSelector and
+# tolerations keys (defined near the end of this file), for example:
+#   nodeSelector:
+#     accelerator: nvidia
+#   tolerations:
+#     - key: nvidia.com/gpu
+#       operator: Exists
+#       effect: NoSchedule
 
 livenessProbe:
   enabled: true
@@ -152,5 +177,12 @@ podDisruptionBudget:
 nodeSelector: {}
 affinity: {}
 tolerations: []
+# Spread replicas across nodes for availability.
+# The labelSelector is injected automatically from the chart's selector labels;
+# do NOT add labelSelector here. Set to [] to disable.
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
 volumes: []
 volumeMounts: []

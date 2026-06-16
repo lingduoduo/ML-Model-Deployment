@@ -1,5 +1,6 @@
 replicaCount: 3
 
+# Override tag with an immutable image tag or digest in CI/CD.
 image:
   repository: ghcr.io/example/model-server
   tag: latest
@@ -16,9 +17,11 @@ resources:
   requests:
     cpu: "1"
     memory: 1Gi
+    ephemeral-storage: 2Gi
   limits:
     cpu: "2"
     memory: 2Gi
+    ephemeral-storage: 4Gi
 
 # Health check configuration for production
 livenessProbe:
@@ -61,16 +64,3 @@ autoscaling:
 podDisruptionBudget:
   enabled: true
   minAvailable: 2
-
-# Security context for production
-podSecurityContext:
-  runAsNonRoot: true
-  runAsUser: 1000
-  fsGroup: 1000
-
-securityContext:
-  allowPrivilegeEscalation: false
-  readOnlyRootFilesystem: false
-  capabilities:
-    drop:
-      - ALL
