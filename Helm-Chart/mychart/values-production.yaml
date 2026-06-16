@@ -61,16 +61,3 @@ autoscaling:
 podDisruptionBudget:
   enabled: true
   minAvailable: 2
-
-# Security context for production
-podSecurityContext:
-  runAsNonRoot: true
-  runAsUser: 1000
-  fsGroup: 1000
-
-securityContext:
-  allowPrivilegeEscalation: false
-  readOnlyRootFilesystem: false
-  capabilities:
-    drop:
-      - ALL

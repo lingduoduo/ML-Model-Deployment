@@ -24,13 +24,27 @@ podLabels: {}
 
 # Security context for pods and containers
 podSecurityContext:
-  runAsNonRoot: false
+  runAsNonRoot: true
   runAsUser: 1000
   fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
 
 securityContext:
   allowPrivilegeEscalation: false
-  readOnlyRootFilesystem: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+# Writable scratch space mounted at /tmp.
+# Required because readOnlyRootFilesystem is true by default.
+# If your app writes outside /tmp, add those paths via volumes/volumeMounts
+# or set securityContext.readOnlyRootFilesystem: false.
+writableTmp:
+  enabled: true
+  # Node ephemeral storage cap for the /tmp emptyDir, e.g. 256Mi or 1Gi.
+  sizeLimit: 1Gi
 
 container:
   port: 8080

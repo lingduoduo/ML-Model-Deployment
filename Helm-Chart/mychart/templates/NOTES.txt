@@ -24,3 +24,14 @@
 
 3. Inspect the model-specific environment in the pod:
   kubectl exec --namespace {{ .Release.Namespace }} deploy/{{ include "mychart.fullname" . }} -- printenv MODEL_NAME MODEL_PATH
+
+4. Security baseline (defaults):
+  - runAsNonRoot: {{ .Values.podSecurityContext.runAsNonRoot }}
+  - readOnlyRootFilesystem: {{ .Values.securityContext.readOnlyRootFilesystem }}
+{{- if .Values.securityContext.readOnlyRootFilesystem }}
+
+  IMPORTANT: the root filesystem is READ-ONLY. A writable emptyDir is mounted
+  at /tmp (writableTmp.enabled={{ .Values.writableTmp.enabled }}). If your container writes to
+  any other path, the process will fail. Add those paths via volumes/volumeMounts,
+  or set securityContext.readOnlyRootFilesystem=false.
+{{- end }}
