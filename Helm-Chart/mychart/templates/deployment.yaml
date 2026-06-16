@@ -19,6 +19,9 @@ spec:
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
+        {{- if .Values.deployTimestamp.enabled }}
+        mychart.io/deploy-timestamp: {{ now | date "2006-01-02T15:04:05Z07:00" | quote }}
+        {{- end }}
       labels:
         {{- include "mychart.labels" . | nindent 8 }}
         {{- with .Values.podLabels }}
