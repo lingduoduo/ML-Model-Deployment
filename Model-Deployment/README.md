@@ -20,6 +20,8 @@ load testing, online evaluation, and real-time rollout strategies.
 - [Validation / render checks](#validation--render-checks)
 - [Promotion (CD)](#promotion-cd)
 - [Local trial (minikube)](#local-trial-minikube)
+- [How it works](#how-it-works)
+- [Design references](#design-references)
 - [Notes & gotchas](#notes--gotchas)
 
 ## Patterns
@@ -307,6 +309,41 @@ The two GitHub Actions workflows (manual `workflow_dispatch`, gated dev→stagin
 > `.github/workflows/`. Run them via `gh workflow run` against a copy placed in
 > `.github/workflows/`, or invoke `deploy/deploy.sh` directly.
 
+### Promotion lifecycle (step by step)
+
+Derived from the design spec and plan (see [Design references](#design-references)).
+Each stage runs `deploy/deploy.sh` with the env vars shown; a stage that fails
+stops the promotion.
+
+**deploy-code** — the *image* is promoted unchanged; the *model* version travels
+with it but can be bumped independently later:
+
+1. **dev** — `DEPLOY_ENVIRONMENT=dev DEPLOYMENT_PATTERN=deploy-code` → deploy the
+   image, run a smoke test.
+2. **staging** — same `IMAGE_TAG`, `DEPLOY_ENVIRONMENT=staging` → run integration
+   tests on a **data subset** (staging runs at reduced scale; full data is prod-only).
+3. **manual approval** (GitHub Environment protection on the production job).
+4. **production canary** — `DEPLOY_ENVIRONMENT=production DEPLOY_VARIANT=canary`
+   → the challenger deploys as `<release>-canary` alongside the live champion.
+5. **compare gate** — `GATE_ENABLED=true GATE_MODE=compare` → the gate Job scores
+   candidate vs the current prod model (plus SLA/load checks) and gates
+   **promote-or-rollback**. Traffic shifts per `ROLLOUT_STRATEGY`.
+
+**deploy-models** — the *model artifact* (`MODEL_VERSION`) is promoted; the image
+rides its own deploy-code track:
+
+1. **dev** — `DEPLOY_ENVIRONMENT=dev DEPLOYMENT_PATTERN=deploy-models` → stage the
+   model version in the dev catalog.
+2. **staging validate gate** — `DEPLOY_ENVIRONMENT=staging GATE_ENABLED=true
+   GATE_MODE=validate` → validation checks (readiness + SLA/load) on the promoted
+   artifact, **before** prod.
+3. **manual approval**.
+4. **production** — `DEPLOY_ENVIRONMENT=production` → deploy the validated model.
+
+Ship a new prod model without touching code by bumping only `MODEL_VERSION` on the
+production deploy; ship new code without changing the model by bumping only
+`IMAGE_TAG`.
+
 ## Local trial (minikube)
 
 The fastest path is the bundled script, which does everything below
@@ -352,6 +389,43 @@ helm uninstall demo -n model-demo
 minikube delete
 colima stop
 ```
+
+## How it works
+
+The mechanics behind the values, for when you extend the chart:
+
+- **One validation accumulator.** `templates/_helpers.tpl` defines
+  `model-deployment.validate`, invoked once at the top of `deployment.yaml`. It
+  `fail`s the render on an invalid `deploymentPattern`, `rolloutStrategy`, or
+  `modelGate.mode` (when the gate is enabled), on `rolloutStrategy: shadow` with
+  `trafficRouting.provider: none`, and on a `modelStore.catalog` that doesn't match
+  `environment`. Add new validated values here, not in a new helper.
+- **Model loading is an init container.** When `modelStore.uri` is set, an init
+  container pulls `<uri>/<model.version>` into the model mount before the server
+  starts; `model.version`/`model.catalog` are stamped as pod annotations so the
+  chart's checksum machinery rolls pods exactly once when the version changes.
+- **The gate is a Helm hook Job.** `model-gate-job.yaml` renders only when
+  `modelGate.enabled`, as a `pre-install`/`pre-upgrade` hook, so it runs and must
+  pass before the workload updates. `mode: validate` (staging, deploy-models) or
+  `compare` (prod, deploy-code); both also run the `sla`/`load` checks when set.
+- **Rollout routing is mesh-optional.** `traffic-routing.yaml` renders an Istio
+  `VirtualService` or Gateway API `HTTPRoute` only when `trafficRouting.provider`
+  is set — weights for `gradual`/`ab-testing`, a mirror rule for `shadow`. With
+  `provider: none` it falls back to the canary release; `shadow` requires a provider.
+- **Online evaluation is a CronJob.** `model-online-eval-cronjob.yaml` (prod,
+  opt-in) periodically re-scores the live model, complementing the deploy-time gate.
+- **Backward-safe by construction.** Every optional feature is guarded by its
+  enabling value; with defaults the chart renders the same shape as `mychart`.
+
+## Design references
+
+The full rationale and the task-by-task build are tracked in-repo:
+
+- Design spec: [`docs/superpowers/specs/2026-06-17-ml-deployment-patterns-design.md`](../docs/superpowers/specs/2026-06-17-ml-deployment-patterns-design.md)
+  — the two patterns, catalog segregation (§4), validation gates (§6), real-time
+  serving (§6a), and rollout strategies (§6b).
+- Implementation plan: [`docs/superpowers/plans/2026-06-17-ml-deployment-patterns.md`](../docs/superpowers/plans/2026-06-17-ml-deployment-patterns.md)
+  — the 11 tasks, the exact render assertions, and the CD pipeline shape.
 
 ## Notes & gotchas
 
