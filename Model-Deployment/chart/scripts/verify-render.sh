@@ -9,6 +9,9 @@ CHART="$(cd "$(dirname "$0")/.." && pwd)"
 REPO_OVERRIDE="${IMAGE_REPOSITORY:-ghcr.io/example/model-server}"
 TAG_OVERRIDE="${IMAGE_TAG:-ci-test}"
 
+# Baseline for negative cases and feature toggles: use a known-good dev environment
+GOOD=(--set "image.repository=${REPO_OVERRIDE}" --set "image.tag=${TAG_OVERRIDE}" -f "${CHART}/values-dev.yaml")
+
 ENVS=("values-dev" "values-staging" "values-production" "values-production-canary")
 
 fail() { echo "ASSERTION FAILED: $1" >&2; exit 1; }
@@ -48,16 +51,16 @@ for env in "${ENVS[@]}"; do
 done
 
 echo "== negative cases =="
-(set +o pipefail; render --set deploymentPattern=bogus 2>&1 | grep -q 'deploymentPattern must be one of') || fail "bad pattern not rejected"
-(set +o pipefail; render --set rolloutStrategy=bogus 2>&1 | grep -q 'rolloutStrategy must be one of') || fail "bad strategy not rejected"
-(set +o pipefail; render --set rolloutStrategy=shadow 2>&1 | grep -q "shadow.*requires trafficRouting.provider") || fail "shadow+none not rejected"
-(set +o pipefail; render --set environment=production --set modelStore.catalog=dev 2>&1 | grep -q 'does not match environment') || fail "catalog/env mismatch not rejected"
-(set +o pipefail; render --set modelGate.enabled=true --set modelGate.mode=bogus 2>&1 | grep -q 'modelGate.mode must be one of') || fail "bad gate mode not rejected"
+(set +o pipefail; render "${GOOD[@]}" --set deploymentPattern=bogus 2>&1 | grep -q 'deploymentPattern must be one of') || fail "bad pattern not rejected"
+(set +o pipefail; render "${GOOD[@]}" --set rolloutStrategy=bogus 2>&1 | grep -q 'rolloutStrategy must be one of') || fail "bad strategy not rejected"
+(set +o pipefail; render "${GOOD[@]}" --set rolloutStrategy=shadow 2>&1 | grep -q "shadow.*requires trafficRouting.provider") || fail "shadow+none not rejected"
+(set +o pipefail; render "${GOOD[@]}" --set environment=production --set modelStore.catalog=dev 2>&1 | grep -q 'does not match environment') || fail "catalog/env mismatch not rejected"
+(set +o pipefail; render "${GOOD[@]}" --set modelGate.enabled=true --set modelGate.mode=bogus 2>&1 | grep -q 'modelGate.mode must be one of') || fail "bad gate mode not rejected"
 
 echo "== feature toggles =="
-render --set modelGate.enabled=true --set modelGate.mode=compare | grep -q 'model-deployment.io/gate: "compare"' || fail "compare gate did not render"
-render --set onlineEval.enabled=true | grep -q 'kind: CronJob' || fail "online-eval CronJob did not render"
-render --set trafficRouting.provider=istio | grep -q 'kind: VirtualService' || fail "istio VirtualService did not render"
-render --set trafficRouting.provider=gateway-api | grep -q 'kind: HTTPRoute' || fail "gateway-api HTTPRoute did not render"
+(set +o pipefail; render "${GOOD[@]}" --set modelGate.enabled=true --set modelGate.mode=compare | grep -q 'model-deployment.io/gate: "compare"') || fail "compare gate did not render"
+(set +o pipefail; render "${GOOD[@]}" --set onlineEval.enabled=true | grep -q 'kind: CronJob') || fail "online-eval CronJob did not render"
+(set +o pipefail; render "${GOOD[@]}" --set trafficRouting.provider=istio | grep -q 'kind: VirtualService') || fail "istio VirtualService did not render"
+(set +o pipefail; render "${GOOD[@]}" --set trafficRouting.provider=gateway-api | grep -q 'kind: HTTPRoute') || fail "gateway-api HTTPRoute did not render"
 
 echo "All assertions passed."
