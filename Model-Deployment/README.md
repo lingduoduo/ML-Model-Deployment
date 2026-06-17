@@ -30,6 +30,48 @@ limited-write staging, restricted-write prod) is enforced out-of-band via the
 - Rollout strategies: `rolloutStrategy` = gradual | ab-testing | shadow, with
   mesh-optional `trafficRouting.provider` (none | istio | gateway-api).
 
+## Install
+
+The chart lives at `Model-Deployment/chart` (chart name: `model-deployment`).
+Run these from the repo root.
+
+Minimal install (defaults: deploy-code, no model store, no gates):
+
+```bash
+helm install my-release Model-Deployment/chart
+```
+
+Per-environment install with the values the chart expects:
+
+```bash
+helm install model-release Model-Deployment/chart \
+  -f Model-Deployment/chart/values-staging.yaml \
+  --set image.repository=ghcr.io/example/model-server \
+  --set image.tag=<immutable-tag> \
+  --set model.version=<model-version>
+```
+
+Swap in `values-dev.yaml` / `values-production.yaml` as needed. Each env file
+pins `environment` + `modelStore.catalog`; the chart **fails the render** if they
+don't match (dev→dev, staging→staging, production→prod).
+
+Preview without a cluster, or do a client-side dry run:
+
+```bash
+helm template my-release Model-Deployment/chart -f Model-Deployment/chart/values-staging.yaml
+helm install  my-release Model-Deployment/chart -f Model-Deployment/chart/values-staging.yaml --dry-run=client
+```
+
+Run the bundled connection test (the `helm.sh/hook: test` pod in
+`templates/tests/`) against a live release:
+
+```bash
+helm test model-release
+```
+
+Upgrades use the same syntax (`helm upgrade --install`); bumping `model.version`
+alone rolls only the model, bumping `image.tag` alone rolls only the code.
+
 ## Verify
 
 ```bash
