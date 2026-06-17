@@ -1,3 +1,6 @@
+# Deployment pattern: deploy-code | deploy-models
+deploymentPattern: deploy-code
+
 replicaCount: 1
 
 image:

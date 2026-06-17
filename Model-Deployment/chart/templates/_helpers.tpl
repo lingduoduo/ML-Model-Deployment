@@ -60,3 +60,14 @@ Create the name of the service account to use
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
 {{- end }}
+
+{{/*
+Validate selectable values. Fails rendering with a clear message on bad input.
+Extended by later tasks (rolloutStrategy, catalog/environment, modelGate.mode).
+*/}}
+{{- define "model-deployment.validate" -}}
+{{- $allowedPatterns := list "deploy-code" "deploy-models" -}}
+{{- if not (has .Values.deploymentPattern $allowedPatterns) -}}
+{{- fail (printf "deploymentPattern must be one of [%s], got %q" (join ", " $allowedPatterns) (toString .Values.deploymentPattern)) -}}
+{{- end -}}
+{{- end -}}
