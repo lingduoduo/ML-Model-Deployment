@@ -72,6 +72,54 @@ helm test model-release
 Upgrades use the same syntax (`helm upgrade --install`); bumping `model.version`
 alone rolls only the model, bumping `image.tag` alone rolls only the code.
 
+## Local trial (minikube)
+
+Spin up a throwaway cluster and run the chart with a shell-capable image so the
+`model-pull` init container and the read-only-rootfs / non-root security context
+all work. `busybox` is used because the init container's default command needs a
+shell (a from-scratch image like `traefik/whoami` fails with
+`Init:RunContainerError`).
+
+```bash
+# Cluster (Colima provides the docker runtime on macOS; or use Docker Desktop):
+colima start
+minikube start --driver=docker
+
+# Install with a runnable image; busybox httpd serves /health, /ready, / on :8080
+helm upgrade --install demo Model-Deployment/chart \
+  -n model-demo --create-namespace \
+  -f Model-Deployment/chart/values-staging.yaml \
+  --set image.repository=busybox --set image.tag=1.36 \
+  --set model.version=2026-06-01 \
+  --set-string 'container.command[0]=/bin/sh' \
+  --set-string 'container.command[1]=-c' \
+  --set-string 'container.command[2]=mkdir -p /tmp/www && printf ok > /tmp/www/health && printf ok > /tmp/www/ready && printf hello > /tmp/www/index.html && httpd -f -p 8080 -h /tmp/www'
+
+kubectl rollout status deploy/demo-model-deployment -n model-demo
+```
+
+### Inspecting the release
+
+```bash
+kubectl get pods -n model-demo -o wide
+kubectl get deploy,svc,cronjob,job -n model-demo
+
+POD=$(kubectl get pod -n model-demo -l app.kubernetes.io/instance=demo -o jsonpath='{.items[0].metadata.name}')
+kubectl logs -n model-demo "$POD" -c model-pull          # init container (model fetch)
+kubectl get pod -n model-demo "$POD" \
+  -o jsonpath='{.metadata.annotations.model\.version}{"  "}{.metadata.annotations.model\.catalog}{"\n"}'
+
+helm test demo -n model-demo                              # runs templates/tests/test-connection.yaml
+```
+
+### Teardown
+
+```bash
+helm uninstall demo -n model-demo
+minikube delete
+colima stop
+```
+
 ## Verify
 
 ```bash
