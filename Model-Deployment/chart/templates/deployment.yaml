@@ -17,6 +17,12 @@ spec:
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- if .Values.model.version }}
+        model.version: {{ .Values.model.version | quote }}
+        {{- end }}
+        {{- if .Values.modelStore.catalog }}
+        model.catalog: {{ .Values.modelStore.catalog | quote }}
+        {{- end }}
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -37,6 +43,47 @@ spec:
       serviceAccountName: {{ include "model-deployment.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- if .Values.modelStore.uri }}
+      initContainers:
+        - name: model-pull
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          {{- if .Values.modelStore.pullCommand }}
+          command:
+            {{- toYaml .Values.modelStore.pullCommand | nindent 12 }}
+          {{- else }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              echo "[model-pull] fetching ${MODEL_URI} -> ${MODEL_DEST}"
+              if command -v model-pull >/dev/null 2>&1; then
+                model-pull "${MODEL_URI}" "${MODEL_DEST}"
+              else
+                echo "[model-pull] override modelStore.pullCommand for your backend" >&2
+              fi
+          {{- end }}
+          env:
+            - name: MODEL_URI
+              value: "{{ .Values.modelStore.uri }}/{{ .Values.model.version }}"
+            - name: MODEL_DEST
+              value: {{ .Values.modelStore.mountPath | quote }}
+          {{- if .Values.modelStore.pullSecretName }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.modelStore.pullSecretName }}
+          {{- end }}
+          volumeMounts:
+            {{- if .Values.persistence.enabled }}
+            - name: model-storage
+              mountPath: {{ .Values.persistence.mountPath }}
+            {{- else }}
+            - name: model-data
+              mountPath: {{ .Values.modelStore.mountPath }}
+            {{- end }}
+      {{- end }}
       containers:
         - name: {{ .Chart.Name }}
           securityContext:
@@ -94,11 +141,14 @@ spec:
           {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
-          {{- if or .Values.persistence.enabled .Values.writableTmp.enabled .Values.volumeMounts }}
+          {{- if or .Values.persistence.enabled .Values.writableTmp.enabled .Values.volumeMounts .Values.modelStore.uri }}
           volumeMounts:
             {{- if .Values.persistence.enabled }}
             - name: model-storage
               mountPath: {{ .Values.persistence.mountPath }}
+            {{- else if .Values.modelStore.uri }}
+            - name: model-data
+              mountPath: {{ .Values.modelStore.mountPath }}
             {{- end }}
             {{- if .Values.writableTmp.enabled }}
             - name: tmp
@@ -108,12 +158,16 @@ spec:
             {{- toYaml . | nindent 12 }}
             {{- end }}
           {{- end }}
-      {{- if or .Values.persistence.enabled .Values.writableTmp.enabled .Values.volumes }}
+      {{- if or .Values.persistence.enabled .Values.writableTmp.enabled .Values.volumes .Values.modelStore.uri }}
       volumes:
         {{- if .Values.persistence.enabled }}
         - name: model-storage
           persistentVolumeClaim:
             claimName: {{ .Values.persistence.existingClaim | default (printf "%s-model-storage" (include "model-deployment.fullname" .)) }}
+        {{- end }}
+        {{- if and .Values.modelStore.uri (not .Values.persistence.enabled) }}
+        - name: model-data
+          emptyDir: {}
         {{- end }}
         {{- if .Values.writableTmp.enabled }}
         - name: tmp

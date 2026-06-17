@@ -70,4 +70,11 @@ Extended by later tasks (rolloutStrategy, catalog/environment, modelGate.mode).
 {{- if not (has .Values.deploymentPattern $allowedPatterns) -}}
 {{- fail (printf "deploymentPattern must be one of [%s], got %q" (join ", " $allowedPatterns) (toString .Values.deploymentPattern)) -}}
 {{- end -}}
+{{- if and .Values.modelStore.catalog .Values.environment -}}
+{{- $catMap := dict "dev" "dev" "staging" "staging" "production" "prod" -}}
+{{- $expected := index $catMap .Values.environment -}}
+{{- if and $expected (ne .Values.modelStore.catalog $expected) -}}
+{{- fail (printf "modelStore.catalog %q does not match environment %q (expected %q)" .Values.modelStore.catalog .Values.environment $expected) -}}
+{{- end -}}
+{{- end -}}
 {{- end -}}

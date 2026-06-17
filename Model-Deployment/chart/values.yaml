@@ -67,6 +67,20 @@ container:
 model:
   name: sample-model
   path: /models/model
+  version: ""          # the model version to serve; bump to ship a new model
+  pullPolicy: IfNotPresent
+
+# Environment this release targets: dev | staging | production (set per env values file).
+environment: ""
+
+# Catalog-segregated model store (§4). When uri is set, an init container pulls
+# <uri>/<model.version> into mountPath before the server starts.
+modelStore:
+  catalog: ""          # dev | staging | prod — must match `environment` (see validation)
+  uri: ""              # backend-agnostic base, e.g. s3://ml-dev/model-server
+  mountPath: /models   # where the model is placed for the server to read
+  pullSecretName: ""   # optional credentials secret (mounted as envFrom on the init container)
+  pullCommand: []      # override the pull command for your backend; default is a placeholder
 
 env: []
 # Example:
