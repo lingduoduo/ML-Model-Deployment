@@ -65,9 +65,11 @@ container:
   workingDir: ""
 
 model:
-  # Selects which checkpoint the recsys-serve API loads; emitted as the
-  # RECSYS_SERVE_MODEL env var (e.g. dssm, mlp_embedding).
+  # `name` selects which checkpoint the server loads. It is injected as the env
+  # var named by `envVar` (default RECSYS_SERVE_MODEL for the recsys-serve app;
+  # e.g. dssm, mlp_embedding). Set envVar to "" to omit the model env var.
   name: dssm
+  envVar: RECSYS_SERVE_MODEL
   path: /models/model
   version: ""          # the model version to serve; bump to ship a new model
   pullPolicy: IfNotPresent
