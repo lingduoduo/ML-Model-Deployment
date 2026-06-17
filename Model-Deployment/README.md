@@ -309,11 +309,21 @@ The two GitHub Actions workflows (manual `workflow_dispatch`, gated dev→stagin
 
 ## Local trial (minikube)
 
-Spin up a throwaway cluster and run the chart with a shell-capable image so the
-`model-pull` init container and the read-only-rootfs / non-root security context
-all work. `busybox` is used because the init container's default command needs a
-shell (a from-scratch image like `traefik/whoami` fails with
-`Init:RunContainerError`).
+The fastest path is the bundled script, which does everything below
+automatically (render checks → cluster → install → verify → `helm test` →
+exercise a CronJob). It resolves paths relative to itself, so run it from anywhere:
+
+```bash
+Model-Deployment/test.sh            # full flow on a local cluster
+Model-Deployment/test.sh --render   # offline render + lint checks only (no cluster)
+Model-Deployment/test.sh --cleanup  # uninstall release + delete the cluster
+```
+
+The manual equivalent follows. Spin up a throwaway cluster and run the chart with
+a shell-capable image so the `model-pull` init container and the
+read-only-rootfs / non-root security context all work. `busybox` is used because
+the init container's default command needs a shell (a from-scratch image like
+`traefik/whoami` fails with `Init:RunContainerError`).
 
 ```bash
 # Cluster (Colima provides the docker runtime on macOS; or use Docker Desktop):
