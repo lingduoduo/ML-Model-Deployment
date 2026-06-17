@@ -83,4 +83,11 @@ Extended by later tasks (rolloutStrategy, catalog/environment, modelGate.mode).
 {{- fail (printf "modelGate.mode must be one of [%s] when modelGate.enabled, got %q" (join ", " $allowedModes) (toString .Values.modelGate.mode)) -}}
 {{- end -}}
 {{- end -}}
+{{- $allowedStrategies := list "gradual" "ab-testing" "shadow" -}}
+{{- if not (has .Values.rolloutStrategy $allowedStrategies) -}}
+{{- fail (printf "rolloutStrategy must be one of [%s], got %q" (join ", " $allowedStrategies) (toString .Values.rolloutStrategy)) -}}
+{{- end -}}
+{{- if and (eq .Values.rolloutStrategy "shadow") (eq .Values.trafficRouting.provider "none") -}}
+{{- fail "rolloutStrategy 'shadow' requires trafficRouting.provider 'istio' or 'gateway-api' (traffic mirroring is impossible with provider 'none')" -}}
+{{- end -}}
 {{- end -}}

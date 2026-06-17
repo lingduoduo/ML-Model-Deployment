@@ -232,3 +232,14 @@ onlineEval:
   schedule: "0 * * * *"
   holdoutUri: ""
   driftAction: alert   # alert | trigger-refresh
+
+# Real-time rollout strategy (§6b): gradual | ab-testing | shadow
+rolloutStrategy: gradual
+trafficRouting:
+  provider: none       # none | istio | gateway-api
+  abSplit: 50          # ab-testing: % of traffic to the challenger (canary)
+  gradualSteps:        # gradual: % steps advanced as the gate passes
+    - 10
+    - 25
+    - 50
+    - 100

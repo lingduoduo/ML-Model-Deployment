@@ -1,0 +1,76 @@
+{{- $challenger := printf "%s-canary" (include "model-deployment.fullname" .) -}}
+{{- if eq .Values.trafficRouting.provider "istio" }}
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: {{ include "model-deployment.fullname" . }}
+  labels:
+    {{- include "model-deployment.labels" . | nindent 4 }}
+spec:
+  hosts:
+    - {{ include "model-deployment.fullname" . }}
+  http:
+    {{- if eq .Values.rolloutStrategy "shadow" }}
+    - route:
+        - destination:
+            host: {{ include "model-deployment.fullname" . }}
+          weight: 100
+      mirror:
+        host: {{ $challenger }}
+      mirrorPercentage:
+        value: 100.0
+    {{- else if eq .Values.rolloutStrategy "ab-testing" }}
+    - route:
+        - destination:
+            host: {{ include "model-deployment.fullname" . }}
+          weight: {{ sub 100 (int .Values.trafficRouting.abSplit) }}
+        - destination:
+            host: {{ $challenger }}
+          weight: {{ int .Values.trafficRouting.abSplit }}
+    {{- else }}
+    - route:
+        - destination:
+            host: {{ include "model-deployment.fullname" . }}
+          weight: {{ sub 100 (int (last .Values.trafficRouting.gradualSteps)) }}
+        - destination:
+            host: {{ $challenger }}
+          weight: {{ int (last .Values.trafficRouting.gradualSteps) }}
+    {{- end }}
+{{- else if eq .Values.trafficRouting.provider "gateway-api" }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "model-deployment.fullname" . }}
+  labels:
+    {{- include "model-deployment.labels" . | nindent 4 }}
+spec:
+  rules:
+    {{- if eq .Values.rolloutStrategy "shadow" }}
+    - filters:
+        - type: RequestMirror
+          requestMirror:
+            backendRef:
+              name: {{ $challenger }}
+              port: {{ .Values.service.port }}
+      backendRefs:
+        - name: {{ include "model-deployment.fullname" . }}
+          port: {{ .Values.service.port }}
+          weight: 100
+    {{- else if eq .Values.rolloutStrategy "ab-testing" }}
+    - backendRefs:
+        - name: {{ include "model-deployment.fullname" . }}
+          port: {{ .Values.service.port }}
+          weight: {{ sub 100 (int .Values.trafficRouting.abSplit) }}
+        - name: {{ $challenger }}
+          port: {{ .Values.service.port }}
+          weight: {{ int .Values.trafficRouting.abSplit }}
+    {{- else }}
+    - backendRefs:
+        - name: {{ include "model-deployment.fullname" . }}
+          port: {{ .Values.service.port }}
+          weight: {{ sub 100 (int (last .Values.trafficRouting.gradualSteps)) }}
+        - name: {{ $challenger }}
+          port: {{ .Values.service.port }}
+          weight: {{ int (last .Values.trafficRouting.gradualSteps) }}
+    {{- end }}
+{{- end }}
