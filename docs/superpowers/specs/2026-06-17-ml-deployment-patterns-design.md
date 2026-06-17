@@ -172,6 +172,12 @@ modelGate:
   mode: ""              # validate | compare
   holdoutUri: ""        # dataset/metrics source for the check
   verdictSink: ""       # where pass/fail + metric deltas are written
+  # SLA / system-performance thresholds, folded into the gate (real-time serving,
+  # §6a). Empty thresholds skip the perf portion; a missed SLA fails the gate.
+  sla:
+    p95LatencyMs: 0     # max acceptable p95 serving latency
+    minRps: 0           # min sustained requests/sec the infra must handle
+    errorRateMax: 0     # max acceptable error rate under load
 ```
 
 - **`deploy-code`** → `mode: compare`, enabled in **production**. The new model
@@ -184,7 +190,37 @@ modelGate:
   promote to production (matches the deploy-models visual's first bullet).
   No compare-vs-prod, since validation precedes prod.
 
-Default `modelGate.enabled: false` so base renders carry no Job.
+In **both** modes the gate also runs the `sla` system-performance checks
+(latency/throughput/error-rate) against the running serving infrastructure when
+thresholds are set — there is no separate perf mode. Default
+`modelGate.enabled: false` so base renders carry no Job.
+
+### 6a. Real-time serving considerations
+
+The chart serves a real-time model (`/health`, `/ready`, HTTP port). Two
+real-time-specific concerns from the model-serving visual:
+
+- **Pre-deployment system testing.** SLAs collected from stakeholders are encoded
+  as `modelGate.sla` thresholds and checked **in staging** as part of the
+  `validate`/`compare` gate (folded in, per above) — the serving *infrastructure*
+  (latency/throughput/error-rate under load) is tested, not just model
+  correctness. A missed SLA fails promotion.
+- **Online model evaluation.** A new opt-in recurring eval keeps the most
+  accurate model serving as fresh data arrives:
+
+  ```yaml
+  onlineEval:
+    enabled: false        # opt-in, enabled in production
+    schedule: "0 * * * *" # cron; how often to re-score the live model
+    holdoutUri: ""        # fresh-data/metrics source
+    driftAction: alert    # alert | trigger-refresh
+  ```
+
+  Rendered as `templates/model-online-eval-cronjob.yaml` (a `CronJob`, prod-only,
+  off by default). It periodically scores the live model on fresh data and, on
+  degradation, either alerts or signals a model refresh — supporting the
+  more-frequent-update cadence real-time models need. This complements (does not
+  replace) the deploy-time `compare` gate.
 
 ### 7. CD pipelines
 
@@ -219,7 +255,8 @@ Model-Deployment/
     values-production-canary.yaml
     templates/
       deployment.yaml               # + model-pull init container, model.version + model.catalog annotations
-      model-gate-job.yaml           # NEW, validate|compare, env-gated
+      model-gate-job.yaml           # NEW, validate|compare + SLA perf checks, env-gated
+      model-online-eval-cronjob.yaml # NEW, opt-in prod CronJob for online evaluation
       _helpers.tpl                  # + deploymentPattern + catalog/env match validation helpers
       ... (inherited templates)
     scripts/verify-render.sh        # inherited assertions, extended
@@ -241,7 +278,9 @@ Model-Deployment/
   - `modelStore.catalog` matches the deploying environment (dev/staging/prod);
   - `model-gate-job.yaml` renders only when `modelGate.enabled: true`, with the
     correct `mode` per pattern (compare in prod for deploy-code; validate in
-    staging for deploy-models);
+    staging for deploy-models), and includes the `sla` checks when thresholds set;
+  - `model-online-eval-cronjob.yaml` renders only when `onlineEval.enabled: true`
+    (production), with the configured `schedule`;
   - invalid `deploymentPattern` fails rendering;
   - inherited security-context / checksum assertions still pass;
   - renders are deterministic (byte-identical on repeat with identical inputs).
@@ -252,8 +291,9 @@ Model-Deployment/
   unaffected.
 - All new values default safely: `deploymentPattern: deploy-code`, empty
   `modelStore.uri`/`catalog` omits the init container and catalog assertion,
-  `modelGate.enabled: false` omits the Job. A chart with no model values renders
-  the same shape as hardened `mychart`.
+  `modelGate.enabled: false` omits the gate Job, `onlineEval.enabled: false`
+  omits the CronJob, and empty `modelGate.sla` thresholds skip the perf checks. A
+  chart with no model values renders the same shape as hardened `mychart`.
 
 ## Verification
 
