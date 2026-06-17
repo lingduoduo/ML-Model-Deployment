@@ -136,7 +136,8 @@ Key values (see `chart/values.yaml` for the full set and inline docs):
 |-------|---------|---------|
 | `deploymentPattern` | `deploy-code` | `deploy-code` \| `deploy-models` |
 | `image.repository` / `image.tag` | `recsys-serve` / `latest` | serving image; pin an immutable tag/digest per env |
-| `model.name` / `model.path` | `sample-model` / `/models/model` | model identity + mount path the server reads |
+| `model.name` / `model.path` | `dssm` / `/models/model` | checkpoint to serve + mount path the server reads |
+| `model.envVar` | `RECSYS_SERVE_MODEL` | env var that carries `model.name` into the container; set `""` to omit |
 | `model.version` | `""` | model version to serve; bump to ship a new model (rolls only the model) |
 | `environment` | `""` | `dev` \| `staging` \| `production` (set per env file) |
 | `modelStore.uri` | `""` | backend-agnostic base, e.g. `s3://ml-staging/model-server`; when set, an init container pulls `<uri>/<model.version>` |
