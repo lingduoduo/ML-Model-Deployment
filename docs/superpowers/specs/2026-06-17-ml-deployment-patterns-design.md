@@ -242,6 +242,40 @@ real-time-specific concerns from the model-serving visual:
   more-frequent-update cadence real-time models need. This complements (does not
   replace) the deploy-time `compare` gate.
 
+### 6b. Real-time deployment strategies (Challenger vs Champion)
+
+A newly trained **Challenger** is rolled out against the running **Champion**
+using one of three strategies, selected by value and consumed by the compare
+gate (§6):
+
+```yaml
+rolloutStrategy: gradual    # gradual | ab-testing | shadow
+trafficRouting:
+  provider: none            # none | istio | gateway-api
+  abSplit: 50               # ab-testing: % traffic to challenger (held fixed until decision)
+  gradualSteps: [10,25,50,100]  # gradual: % steps, advanced as metrics pass
+```
+
+- **`gradual`** (default) — challenger starts as a small canary; traffic is
+  shifted up the `gradualSteps` ladder *adaptively* as the compare gate's metrics
+  pass, with rollback if anomalies arise. Matches today's canary + compare path.
+- **`ab-testing`** — challenger and champion run concurrently at a **fixed**
+  `abSplit` until the compare gate reaches a success-criteria decision, then the
+  winner takes all traffic.
+- **`shadow`** — challenger receives a **mirrored copy** of traffic, serves no
+  users; the gate compares its predictions to the champion's. Risk-free;
+  doubles inference compute (noted in README).
+
+**Traffic mechanics (mesh-optional).** When `trafficRouting.provider` is `istio`
+or `gateway-api`, the chart renders the matching routing object
+(`templates/traffic-routing.yaml`: Istio `VirtualService` or Gateway API
+`HTTPRoute`) with **weights** for `gradual`/`ab-testing` and a **mirror** rule
+for `shadow`. When `provider: none` (default), the chart falls back to the
+existing canary release as a replica-weighted approximation for
+`gradual`/`ab-testing`, and `shadow` requires a provider (render fails with a
+clear message if `shadow` + `none`). The chart stays plain-K8s by default; mesh
+objects appear only when a provider is set.
+
 ### 7. CD pipelines
 
 Two pipeline definitions under `Model-Deployment/cicd/`, chosen by
@@ -268,7 +302,7 @@ Model-Deployment/
   README.md                         # both patterns, catalog segregation, when to use each
   chart/
     Chart.yaml                      # name: model-deployment, version 0.1.0
-    values.yaml                     # + deploymentPattern / modelStore(+catalog) / model.version / modelGate
+    values.yaml                     # + deploymentPattern / modelStore(+catalog) / model.version / modelGate / rolloutStrategy / trafficRouting
     values-dev.yaml                 # NEW   — dev catalog, open access
     values-staging.yaml             # staging catalog, limited write
     values-production.yaml          # prod catalog, restricted write
@@ -277,6 +311,7 @@ Model-Deployment/
       deployment.yaml               # + model-pull init container, model.version + model.catalog annotations
       model-gate-job.yaml           # NEW, validate|compare + SLA perf checks, env-gated
       model-online-eval-cronjob.yaml # NEW, opt-in prod CronJob for online evaluation
+      traffic-routing.yaml          # NEW, Istio VirtualService / Gateway API HTTPRoute, mesh-optional
       _helpers.tpl                  # + deploymentPattern + catalog/env match validation helpers
       ... (inherited templates)
     scripts/verify-render.sh        # inherited assertions, extended
@@ -302,7 +337,10 @@ Model-Deployment/
     includes the `sla`/`load` checks (latency p95/p99, QPS, peak, stress) when set;
   - `model-online-eval-cronjob.yaml` renders only when `onlineEval.enabled: true`
     (production), with the configured `schedule`;
-  - invalid `deploymentPattern` fails rendering;
+  - `traffic-routing.yaml` renders only when `trafficRouting.provider` is `istio`
+    or `gateway-api`, with weights for gradual/ab-testing and a mirror rule for
+    shadow; `shadow` + `provider: none` fails rendering;
+  - invalid `deploymentPattern` or `rolloutStrategy` fails rendering;
   - inherited security-context / checksum assertions still pass;
   - renders are deterministic (byte-identical on repeat with identical inputs).
 
@@ -313,8 +351,10 @@ Model-Deployment/
 - All new values default safely: `deploymentPattern: deploy-code`, empty
   `modelStore.uri`/`catalog` omits the init container and catalog assertion,
   `modelGate.enabled: false` omits the gate Job, `onlineEval.enabled: false`
-  omits the CronJob, and empty `modelGate.sla` thresholds skip the perf checks. A
-  chart with no model values renders the same shape as hardened `mychart`.
+  omits the CronJob, empty `modelGate.sla` thresholds skip the perf checks, and
+  `rolloutStrategy: gradual` + `trafficRouting.provider: none` reproduces the
+  existing canary behavior with no mesh objects. A chart with no model values
+  renders the same shape as hardened `mychart`.
 
 ## Verification
 
