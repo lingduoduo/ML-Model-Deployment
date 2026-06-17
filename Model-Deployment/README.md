@@ -1,13 +1,24 @@
 # Model-Deployment
 
-Self-contained Helm chart + CI/CD implementing **two ML deployment patterns** over
-one chart, selected per release by `deploymentPattern`. Derived from the hardened
-`Helm-Chart/mychart` (which it does not modify), it adds independent code/model
-lifecycles, catalog-segregated model stores, validation/comparison gates with SLA
-load testing, online evaluation, and real-time rollout strategies.
+Self-contained Helm chart + CI/CD for serving ML models on Kubernetes. One chart,
+**two deployment patterns** (chosen per release with `deploymentPattern`):
+
+- **deploy-code** (default) — promote one container image dev→staging→prod and
+  update the model independently at runtime.
+- **deploy-models** — promote the model artifact through the environments,
+  validated in staging before prod.
+
+Built on the hardened `Helm-Chart/mychart` (unmodified), it adds independent
+code/model lifecycles, catalog-segregated model stores, validation/comparison
+gates with SLA load testing, online evaluation, scheduled training jobs, and
+real-time rollout strategies.
+
+**Run and test it in one command:** `Model-Deployment/test.sh` — see
+[Quick start](#quick-start).
 
 ## Contents
 
+- [Quick start](#quick-start)
 - [Patterns](#patterns)
 - [Repository layout](#repository-layout)
 - [Prerequisites](#prerequisites)
@@ -23,6 +34,42 @@ load testing, online evaluation, and real-time rollout strategies.
 - [How it works](#how-it-works)
 - [Design references](#design-references)
 - [Notes & gotchas](#notes--gotchas)
+
+## Quick start
+
+**Run and test end to end on a local cluster — one command:**
+
+```bash
+Model-Deployment/test.sh
+```
+
+It runs the render checks, brings up minikube (via Colima), installs the chart,
+runs `helm test`, and fires a scheduled CronJob. Use `--render` for offline checks
+only (no cluster) or `--cleanup` to tear down. Details: [Local trial](#local-trial-minikube).
+
+**Or walk the deploy-code happy path yourself** — promote one image
+dev→staging→prod, update the model independently:
+
+```bash
+# 1. Render + lint the chart (no cluster needed)
+bash Model-Deployment/chart/scripts/verify-render.sh        # => All assertions passed.
+
+# 2. Install the staging release (deploy-code is the default pattern)
+helm install model-release Model-Deployment/chart \
+  -n model-serving --create-namespace \
+  -f Model-Deployment/chart/values-staging.yaml \
+  --set image.repository=ghcr.io/example/model-server \
+  --set image.tag=v1.0.0 \
+  --set model.version=2026-06-01
+
+# 3. Confirm it's up and test connectivity
+kubectl rollout status deploy/model-release-model-deployment -n model-serving
+helm test model-release -n model-serving
+```
+
+From here: ship a new model with no code change (`--set model.version=<new>`),
+promote the image across environments, or add gates — see
+[Promotion lifecycle](#promotion-lifecycle-step-by-step) and [Install](#install).
 
 ## Patterns
 
