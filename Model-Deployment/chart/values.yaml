@@ -203,3 +203,25 @@ topologySpreadConstraints:
     whenUnsatisfiable: ScheduleAnyway
 volumes: []
 volumeMounts: []
+
+# Model validation/comparison gate (§6). Enabled in the gating env per pattern:
+# deploy-code => mode: compare in production; deploy-models => mode: validate in staging.
+modelGate:
+  enabled: false
+  mode: ""             # validate | compare
+  holdoutUri: ""       # dataset/metrics source for the check
+  verdictSink: ""      # where pass/fail + metric deltas are written
+  backoffLimit: 0
+  command: []          # override to run real checks; default echoes the plan
+  readinessChecks: true
+  sla:
+    medianLatencyMs: 0
+    p95LatencyMs: 0
+    p99LatencyMs: 0
+    minQps: 0
+    errorRateMax: 0
+  load:
+    peakQps: 0
+    stress:
+      enabled: false
+      multiplier: 2

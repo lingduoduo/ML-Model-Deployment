@@ -77,4 +77,10 @@ Extended by later tasks (rolloutStrategy, catalog/environment, modelGate.mode).
 {{- fail (printf "modelStore.catalog %q does not match environment %q (expected %q)" .Values.modelStore.catalog .Values.environment $expected) -}}
 {{- end -}}
 {{- end -}}
+{{- if .Values.modelGate.enabled -}}
+{{- $allowedModes := list "validate" "compare" -}}
+{{- if not (has .Values.modelGate.mode $allowedModes) -}}
+{{- fail (printf "modelGate.mode must be one of [%s] when modelGate.enabled, got %q" (join ", " $allowedModes) (toString .Values.modelGate.mode)) -}}
+{{- end -}}
+{{- end -}}
 {{- end -}}
