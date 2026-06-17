@@ -1,4 +1,4 @@
-{{- $challenger := printf "%s-canary" (include "model-deployment.fullname" .) -}}
+{{- $challenger := .Values.trafficRouting.challengerService | default (printf "%s-canary" (include "model-deployment.fullname" .)) -}}
 {{- if eq .Values.trafficRouting.provider "istio" }}
 apiVersion: networking.istio.io/v1beta1
 kind: VirtualService

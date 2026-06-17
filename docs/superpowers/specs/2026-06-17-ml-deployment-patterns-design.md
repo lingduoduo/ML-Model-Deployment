@@ -276,14 +276,23 @@ existing canary release as a replica-weighted approximation for
 clear message if `shadow` + `none`). The chart stays plain-K8s by default; mesh
 objects appear only when a provider is set.
 
+**Challenger service name.** The canary release is deployed as a separate Helm
+release with `nameOverride: canary` (from `values-production-canary.yaml`),
+producing a Service named `<release>-canary` (e.g. `model-release-canary`). The
+mesh routing objects use `trafficRouting.challengerService` (defaults to
+`<fullname>-canary`) so the correct challenger backend is targeted; override this
+value when the canary release name diverges from the default.
+
 ### 7. CD pipelines
 
 Two pipeline definitions under `Model-Deployment/cicd/`, chosen by
 `deploymentPattern`:
 
 - **`cd-deploy-code.yml`**: deploy image to dev → smoke → promote same image to
-  staging → integration test on subset → manual approval → production (standard
-  or canary) → in-prod compare gate.
+  staging → integration test on subset → manual approval → production canary
+  (`DEPLOY_VARIANT=canary`, deploys `values-production-canary.yaml` as a separate
+  `<release>-canary` release) → in-prod compare gate (standard production deploy
+  with `modelGate.enabled: true`, `mode: compare`).
 - **`cd-deploy-models.yml`**: register/stage model version in dev → promote
   artifact to staging → run `mode: validate` gate → manual approval → deploy
   validated model to production. Ancillary code changes flow through

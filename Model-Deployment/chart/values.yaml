@@ -243,3 +243,4 @@ trafficRouting:
     - 25
     - 50
     - 100
+  challengerService: ""  # Service name of the canary/challenger release; defaults to <fullname>-canary
