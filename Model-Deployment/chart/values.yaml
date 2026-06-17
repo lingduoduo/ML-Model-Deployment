@@ -233,6 +233,21 @@ onlineEval:
   holdoutUri: ""
   driftAction: alert   # alert | trigger-refresh
 
+# Scheduled batch / model-training jobs. Each entry renders one CronJob.
+# Empty by default (no CronJobs); populate per environment (see values-dev.yaml).
+# Per-entry fields:
+#   name             (required) — DNS-safe suffix; CronJob is <fullname>-<name>
+#   schedule         (required) — standard cron expression
+#   image            (optional) — defaults to the chart's serving image
+#   command / args   (optional) — container entrypoint/args (lists)
+#   env              (optional) — list of {name,value} env vars
+#   resources        (optional) — defaults to .Values.resources
+#   restartPolicy    (optional) — default OnFailure
+#   concurrencyPolicy(optional) — default Forbid
+#   backoffLimit     (optional) — default 0
+#   suspend          (optional) — default false
+scheduledJobs: []
+
 # Real-time rollout strategy (§6b): gradual | ab-testing | shadow
 rolloutStrategy: gradual
 trafficRouting:

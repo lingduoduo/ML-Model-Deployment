@@ -14,6 +14,7 @@ load testing, online evaluation, and real-time rollout strategies.
 - [Configuration reference](#configuration-reference)
 - [Catalog segregation](#catalog-segregation)
 - [Real-time serving](#real-time-serving)
+- [Scheduled jobs](#scheduled-jobs)
 - [Install](#install)
 - [Inspecting a release](#inspecting-a-release)
 - [Validation / render checks](#validation--render-checks)
@@ -136,6 +137,53 @@ Catalog↔environment mapping (asserted at render): `dev→dev`, `staging→stag
   `shadow`, realized via mesh-optional `trafficRouting.provider`
   (`none` = canary release fallback; `istio` = VirtualService weights/mirror;
   `gateway-api` = HTTPRoute weights / RequestMirror).
+
+## Scheduled jobs
+
+Recurring batch / model-training jobs are declared as a list under
+`scheduledJobs`; each entry renders one `CronJob` (`<release>-model-deployment-<name>`).
+Empty by default (no CronJobs), so it is opt-in per environment. Per-entry fields:
+`name`, `schedule` (required); `image`, `command`, `args`, `env`, `resources`,
+`restartPolicy` (default `OnFailure`), `concurrencyPolicy` (default `Forbid`),
+`backoffLimit` (default `0`), `suspend` (default `false`).
+
+`values-dev.yaml` ships a worked example with staggered schedules (an
+optimus-style crontab): cheap jobs on even hours, heavier jobs on odd hours, and
+a periodic accuracy check:
+
+```yaml
+scheduledJobs:
+  - name: click-model-lightgbm        # hours 0,2,4,...
+    schedule: "0 0-23/2 * * *"
+    image: ghcr.io/example/optimus:dev
+    command: ["/opt/anaconda/bin/python"]
+    args: ["/opt/optimus2/src/jobs/click_model_lightgbm_add_ccbin_job.py", "$(OPTIMUS_VERSION)"]
+    env:
+      - { name: PYTHONPATH, value: /opt/optimus2 }
+      - { name: OPTIMUS_VERSION, value: dev }
+  - name: conversion-first-success    # hours 1,3,5,...
+    schedule: "0 1-23/2 * * *"
+    # ...
+  - name: click-model-new-widget      # daily 02:30, heavier resources
+    schedule: "30 2 * * *"
+    # ...
+  - name: model-accuracy-check        # every 8 hours
+    schedule: "0 */8 * * *"
+    # ...
+```
+
+Inspect them:
+
+```bash
+kubectl get cronjob -n <ns>
+kubectl get jobs,pods -n <ns> -l model-deployment.io/scheduled-job=click-model-lightgbm
+# trigger one immediately for testing:
+kubectl create job --from=cronjob/<release>-model-deployment-model-accuracy-check adhoc-check -n <ns>
+```
+
+Jobs use the chart's serving image unless `image` is set per entry, and inherit
+the non-root / read-only-rootfs security context — a job that writes outside
+`/tmp` needs extra `volumes`/`volumeMounts` or a relaxed `readOnlyRootFilesystem`.
 
 ## Install
 

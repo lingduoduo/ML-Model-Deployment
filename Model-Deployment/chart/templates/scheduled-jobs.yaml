@@ -1,0 +1,49 @@
+{{- range $job := .Values.scheduledJobs }}
+{{- if not $job.name }}{{ fail "each scheduledJobs entry requires a 'name'" }}{{- end }}
+{{- if not $job.schedule }}{{ fail (printf "scheduledJobs entry %q requires a 'schedule'" $job.name) }}{{- end }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "model-deployment.fullname" $ }}-{{ $job.name }}
+  labels:
+    {{- include "model-deployment.labels" $ | nindent 4 }}
+    model-deployment.io/scheduled-job: {{ $job.name | quote }}
+spec:
+  schedule: {{ $job.schedule | quote }}
+  concurrencyPolicy: {{ $job.concurrencyPolicy | default "Forbid" }}
+  suspend: {{ $job.suspend | default false }}
+  jobTemplate:
+    spec:
+      backoffLimit: {{ $job.backoffLimit | default 0 }}
+      template:
+        metadata:
+          labels:
+            {{- include "model-deployment.selectorLabels" $ | nindent 12 }}
+            model-deployment.io/scheduled-job: {{ $job.name | quote }}
+        spec:
+          restartPolicy: {{ $job.restartPolicy | default "OnFailure" }}
+          serviceAccountName: {{ include "model-deployment.serviceAccountName" $ }}
+          securityContext:
+            {{- toYaml $.Values.podSecurityContext | nindent 12 }}
+          containers:
+            - name: {{ $job.name }}
+              image: "{{ $job.image | default (printf "%s:%s" $.Values.image.repository ($.Values.image.tag | default $.Chart.AppVersion)) }}"
+              imagePullPolicy: {{ $.Values.image.pullPolicy }}
+              securityContext:
+                {{- toYaml $.Values.securityContext | nindent 16 }}
+              {{- with $job.command }}
+              command:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+              {{- with $job.args }}
+              args:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+              {{- with $job.env }}
+              env:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+              resources:
+                {{- toYaml ($job.resources | default $.Values.resources) | nindent 16 }}
+{{- end }}
