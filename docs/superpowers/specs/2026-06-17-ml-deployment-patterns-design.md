@@ -7,7 +7,8 @@
 ## Goal
 
 Implement **both** ML deployment patterns from the reference visuals over a
-single Helm chart, selectable per release via a `deploymentPattern` flag:
+single Helm chart, selectable per release via a `deploymentPattern` flag, on top
+of an environment-segregated **catalog / model store**:
 
 - **`deploy-code`** — code and model have *independent lifecycles*. The
   container image is promoted dev → staging → production unchanged; the model is
@@ -22,11 +23,16 @@ single Helm chart, selectable per release via a `deploymentPattern` flag:
   **separate** deploy-code lifecycle. Suited to one-off or expensive-training
   models.
 
+Underneath both patterns, assets are **segregated by the environment that
+produced them** (dev / staging / prod catalogs), so a release always reads from
+and writes to the store matching its maturity level (see §4).
+
 All artifacts live in a new top-level **`Model-Deployment/`** folder —
 self-contained, so `Helm-Chart/mychart` is not edited in place. The chart is
 derived from the hardened `mychart` (inherits its security context, topology
 spread, ephemeral-storage, and checksum-based rollout) and adds the
-model-lifecycle, pattern-selection, and validation-gate features below.
+model-lifecycle, pattern-selection, catalog-segregation, and validation-gate
+features below.
 
 ## Out of scope
 
@@ -35,8 +41,12 @@ model-lifecycle, pattern-selection, and validation-gate features below.
   patterns the artifact is built upstream; the chart never trains).
 - Raw manifests under `Kubernetes/`, the `LLM-Inference-vLLM/` stack, Docker,
   Xinference, OpenClaw.
-- Choice of model-registry backend (S3 / GCS / MLflow / etc.) — configurable
-  via `modelStore.uri`; no backend is hard-coded.
+- Choice of model-registry backend (S3 / GCS / MLflow / Unity Catalog / etc.) —
+  configurable via `modelStore.uri`; no backend is hard-coded. Databricks Unity
+  Catalog is one valid backend, not an assumption.
+- **Enforcing** cloud IAM / bucket policies — the chart references the correct
+  per-env store and service-principal credentials and documents the required
+  access posture; the IAM/policy objects themselves are provisioned out-of-band.
 
 ## The two patterns side by side
 
@@ -49,9 +59,10 @@ model-lifecycle, pattern-selection, and validation-gate features below.
 | Staging role | run code on a data **subset** | gate the model artifact before prod |
 | Typical use | frequent code changes, model updated independently | one-off / expensive-training models |
 
-Both patterns share the **same serving chart and model-loading mechanics**
-(below). They differ only in (a) what the CD pipeline promotes and (b) where the
-validation gate Job runs. The `deploymentPattern` value selects the behavior.
+Both patterns share the **same serving chart, model-loading mechanics, and
+catalog segregation** (below). They differ only in (a) what the CD pipeline
+promotes and (b) where the validation gate Job runs. The `deploymentPattern`
+value selects the behavior.
 
 ## Design
 
@@ -87,8 +98,9 @@ New values block in the chart's `values.yaml`:
 
 ```yaml
 modelStore:
-  uri: ""              # backend-agnostic base, e.g. s3://models-bucket/model-server
-  pullSecretName: ""   # optional credentials secret for the init container
+  catalog: ""          # dev | staging | prod — the catalog this release reads from (see §4)
+  uri: ""              # backend-agnostic base, e.g. s3://ml-dev/model-server
+  pullSecretName: ""   # service-principal / credentials secret for the init container
 model:
   name: sample-model
   path: /models/model  # mount the server reads from
@@ -98,8 +110,9 @@ model:
 
 - An **init container** in `deployment.yaml` pulls
   `<modelStore.uri>/<model.version>` into the `/models` mount before the server
-  starts. When `modelStore.uri` is empty the init container is omitted (image-
-  baked / PVC-preloaded models still render).
+  starts, authenticating with `modelStore.pullSecretName`. When `modelStore.uri`
+  is empty the init container is omitted (image-baked / PVC-preloaded models
+  still render).
 - `model.version` is surfaced as a pod annotation so the chart's existing
   checksum/rollout machinery yields exactly **one** controlled rollout when the
   model version changes, and none when it does not.
@@ -111,7 +124,34 @@ The difference between patterns is **how `model.version` advances**:
 - **`deploy-models`**: `model.version` is the promoted unit — the same version
   moves dev → staging → prod as it passes each gate; the image stays fixed.
 
-### 4. Code lifecycle
+### 4. Catalog / asset segregation (model-store governance)
+
+Assets are segregated by the environment that produced them, so teams have an
+inherent read on each asset's maturity. Modeled generically over the object
+store (no Databricks assumption): one **catalog per environment** = a distinct
+store URI/prefix, set in that env's values file.
+
+| Catalog | Example `modelStore.uri` | Write access | Read access |
+|---------|--------------------------|--------------|-------------|
+| **dev** | `s3://ml-dev/model-server` | open to developers (read+write) | open to developers |
+| **staging** | `s3://ml-staging/model-server` | limited to admins + CI **service principals**; assets may be temporary / periodically cleaned; may hold permanent preprod mirrors for integration testing | enabled for users debugging integration tests |
+| **prod** | `s3://ml-prod/model-server` | limited to a small set of admins + service principals; only production-deployed code writes here | grantable read to non-prod workspaces/users |
+
+Chart's role in enforcing this:
+
+- Each env values file sets `modelStore.catalog` (`dev`/`staging`/`prod`),
+  `modelStore.uri` (the matching store), and `modelStore.pullSecretName` (the
+  service principal scoped to that catalog's access posture).
+- `modelStore.catalog` is stamped as a pod/asset annotation
+  (`model.catalog: <value>`) so served assets carry provenance/maturity.
+- A render assertion enforces that `modelStore.catalog` matches the deploying
+  environment (no prod release reading the dev catalog, etc.).
+- The actual IAM/bucket-policy/service-principal grants are provisioned
+  out-of-band; the chart references them and the spec/README documents the
+  required posture. The write-restriction on prod is realized by giving only the
+  CD service principal write credentials to the prod catalog.
+
+### 5. Code lifecycle
 
 - **`deploy-code`**: the same immutable serving image is promoted dev → staging
   → production by tag/digest; CD never rebuilds per env. Data-scale differences
@@ -121,7 +161,7 @@ The difference between patterns is **how `model.version` advances**:
   independent of the model artifact. The spec documents this as a distinct CD
   flow; the chart treats the image as a normal promoted artifact.
 
-### 5. Validation gates
+### 6. Validation gates
 
 A single Job template `templates/model-gate-job.yaml`, parametrized by mode and
 gated to render only in the appropriate environment:
@@ -146,7 +186,7 @@ modelGate:
 
 Default `modelGate.enabled: false` so base renders carry no Job.
 
-### 6. CD pipelines
+### 7. CD pipelines
 
 Two pipeline definitions under `Model-Deployment/cicd/`, chosen by
 `deploymentPattern`:
@@ -159,24 +199,28 @@ Two pipeline definitions under `Model-Deployment/cicd/`, chosen by
   validated model to production. Ancillary code changes flow through
   `cd-deploy-code.yml` separately.
 
+Promotion across catalogs (§4) is part of these flows: an artifact validated in
+the staging catalog is copied/promoted into the prod catalog by the CD service
+principal before the prod release reads it.
+
 `ci.yml` lints and templates all env values for **both** pattern values.
 
-### 7. Folder layout & deliverables
+### 8. Folder layout & deliverables
 
 ```
 Model-Deployment/
-  README.md                         # both patterns, when to use each, how promotion works
+  README.md                         # both patterns, catalog segregation, when to use each
   chart/
     Chart.yaml                      # name: model-deployment, version 0.1.0
-    values.yaml                     # + deploymentPattern / modelStore / model.version / modelGate
-    values-dev.yaml                 # NEW
-    values-staging.yaml
-    values-production.yaml
+    values.yaml                     # + deploymentPattern / modelStore(+catalog) / model.version / modelGate
+    values-dev.yaml                 # NEW   — dev catalog, open access
+    values-staging.yaml             # staging catalog, limited write
+    values-production.yaml          # prod catalog, restricted write
     values-production-canary.yaml
     templates/
-      deployment.yaml               # + model-pull init container, model.version annotation
+      deployment.yaml               # + model-pull init container, model.version + model.catalog annotations
       model-gate-job.yaml           # NEW, validate|compare, env-gated
-      _helpers.tpl                  # + deploymentPattern validation helper
+      _helpers.tpl                  # + deploymentPattern + catalog/env match validation helpers
       ... (inherited templates)
     scripts/verify-render.sh        # inherited assertions, extended
   cicd/
@@ -186,14 +230,15 @@ Model-Deployment/
   deploy/                           # promotion / rollback helper scripts
 ```
 
-### 8. Chart hygiene & verification
+### 9. Chart hygiene & verification
 
 - New chart `Chart.yaml`: `name: model-deployment`, `version: 0.1.0`.
 - `ci.yml` runs `helm lint` + `helm template` across dev/staging/production/
   canary for **both** `deploymentPattern` values via `verify-render.sh`.
   Render assertions:
   - init container present iff `modelStore.uri` set;
-  - `model.version` pod annotation reflects configured version;
+  - `model.version` and `model.catalog` pod annotations reflect configured values;
+  - `modelStore.catalog` matches the deploying environment (dev/staging/prod);
   - `model-gate-job.yaml` renders only when `modelGate.enabled: true`, with the
     correct `mode` per pattern (compare in prod for deploy-code; validate in
     staging for deploy-models);
@@ -206,8 +251,9 @@ Model-Deployment/
 - New folder; nothing in `Helm-Chart/mychart` changes, so existing releases are
   unaffected.
 - All new values default safely: `deploymentPattern: deploy-code`, empty
-  `modelStore.uri` omits the init container, `modelGate.enabled: false` omits the
-  Job. A chart with no model values renders the same shape as hardened `mychart`.
+  `modelStore.uri`/`catalog` omits the init container and catalog assertion,
+  `modelGate.enabled: false` omits the Job. A chart with no model values renders
+  the same shape as hardened `mychart`.
 
 ## Verification
 
@@ -216,9 +262,11 @@ Model-Deployment/
 - `helm template` renders cleanly for dev/staging/production/canary under both
   `deploymentPattern` values.
 - Init container appears/disappears with `modelStore.uri`; gate Job
-  appears/disappears with `modelGate.enabled` and carries the right `mode`.
+  appears/disappears with `modelGate.enabled` and carries the right `mode`;
+  `model.catalog` annotation matches the env.
 - Bumping `model.version` alone changes only the model annotation/init args;
   bumping `image.tag` alone changes only the image (proves independence in
   `deploy-code`).
+- A prod release pointed at a non-prod catalog fails the render assertion.
 - Invalid `deploymentPattern` produces a clear render failure.
 - `scripts/verify-render.sh` assertions pass.
