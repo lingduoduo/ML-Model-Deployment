@@ -64,3 +64,30 @@ autoscaling:
 podDisruptionBudget:
   enabled: true
   minAvailable: 2
+
+environment: production
+
+# prod catalog: restricted write (only prod-deployed code / CD service principal).
+modelStore:
+  catalog: prod
+  uri: s3://ml-prod/model-server
+
+# Online evaluation keeps the most accurate model serving as fresh data arrives.
+onlineEval:
+  enabled: true
+  schedule: "0 * * * *"
+  holdoutUri: s3://ml-prod/holdout
+  driftAction: alert
+
+modelGate:
+  sla:
+    medianLatencyMs: 150
+    p95LatencyMs: 400
+    p99LatencyMs: 700
+    minQps: 100
+    errorRateMax: 0.005
+  load:
+    peakQps: 300
+    stress:
+      enabled: true
+      multiplier: 3

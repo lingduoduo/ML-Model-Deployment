@@ -33,3 +33,24 @@ startupProbe:
 
 ingress:
   enabled: false
+
+environment: staging
+
+# staging catalog: limited write (admins + CI service principals); read for debugging.
+modelStore:
+  catalog: staging
+  uri: s3://ml-staging/model-server
+
+# Stakeholder SLAs exercised by the gate's load testing in staging (§6a).
+modelGate:
+  sla:
+    medianLatencyMs: 200
+    p95LatencyMs: 500
+    p99LatencyMs: 800
+    minQps: 50
+    errorRateMax: 0.01
+  load:
+    peakQps: 100
+    stress:
+      enabled: true
+      multiplier: 2

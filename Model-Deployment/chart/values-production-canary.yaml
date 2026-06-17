@@ -59,3 +59,9 @@ readinessProbe:
   periodSeconds: 5
   timeoutSeconds: 3
   failureThreshold: 2
+
+environment: production
+
+modelStore:
+  catalog: prod
+  uri: s3://ml-prod/model-server
