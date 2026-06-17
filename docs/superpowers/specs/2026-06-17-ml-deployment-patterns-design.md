@@ -172,12 +172,21 @@ modelGate:
   mode: ""              # validate | compare
   holdoutUri: ""        # dataset/metrics source for the check
   verdictSink: ""       # where pass/fail + metric deltas are written
+  # Deployment readiness checks run before any load/SLA testing (§6a).
+  readinessChecks: true # validate config/deps/input-schema before hitting the endpoint
   # SLA / system-performance thresholds, folded into the gate (real-time serving,
   # §6a). Empty thresholds skip the perf portion; a missed SLA fails the gate.
   sla:
-    p95LatencyMs: 0     # max acceptable p95 serving latency
-    minRps: 0           # min sustained requests/sec the infra must handle
+    p95LatencyMs: 0     # max acceptable p95 (long-tail) serving latency
+    p99LatencyMs: 0     # max acceptable p99 (worst-case) serving latency
+    medianLatencyMs: 0  # max acceptable median (typical) serving latency
+    minQps: 0           # min sustained queries/sec the infra must handle
     errorRateMax: 0     # max acceptable error rate under load
+  load:
+    peakQps: 0          # standard load evaluation: scale to anticipated peak
+    stress:
+      enabled: false    # stress assessment: overwhelm, expect graceful fail + recovery
+      multiplier: 2     # x peakQps to drive the stress run
 ```
 
 - **`deploy-code`** → `mode: compare`, enabled in **production**. The new model
@@ -200,11 +209,22 @@ thresholds are set — there is no separate perf mode. Default
 The chart serves a real-time model (`/health`, `/ready`, HTTP port). Two
 real-time-specific concerns from the model-serving visual:
 
-- **Pre-deployment system testing.** SLAs collected from stakeholders are encoded
-  as `modelGate.sla` thresholds and checked **in staging** as part of the
-  `validate`/`compare` gate (folded in, per above) — the serving *infrastructure*
-  (latency/throughput/error-rate under load) is tested, not just model
-  correctness. A missed SLA fails promotion.
+- **Pre-deployment system testing.** On top of standard unit/integration tests,
+  the serving *infrastructure* is tested **in staging** as part of the
+  `validate`/`compare` gate (folded in, per above), in two stages:
+  - **Deployment readiness checks** (`modelGate.readinessChecks`, default on) run
+    *before* the endpoint is exercised: validate config scripts, required
+    dependencies present, and the expected input data structure is defined.
+    These run first and short-circuit the gate on failure.
+  - **Load testing** drives the endpoint and asserts the stakeholder SLAs encoded
+    in `modelGate.sla`/`modelGate.load`:
+    - *Latency* — median (typical) plus p95/p99 (long-tail / worst-case) meet SLA.
+    - *Throughput* — sustained QPS (`minQps`) under varying load.
+    - *Standard load evaluation* — scale from regular to anticipated `peakQps`,
+      watching response time and `errorRateMax`.
+    - *Stress assessment* (`load.stress`, opt-in) — deliberately overwhelm the
+      system (`multiplier` × peak) to confirm graceful failure and recovery.
+  A failed readiness check or missed SLA fails promotion.
 - **Online model evaluation.** A new opt-in recurring eval keeps the most
   accurate model serving as fresh data arrives:
 
@@ -278,7 +298,8 @@ Model-Deployment/
   - `modelStore.catalog` matches the deploying environment (dev/staging/prod);
   - `model-gate-job.yaml` renders only when `modelGate.enabled: true`, with the
     correct `mode` per pattern (compare in prod for deploy-code; validate in
-    staging for deploy-models), and includes the `sla` checks when thresholds set;
+    staging for deploy-models), runs readiness checks before load testing, and
+    includes the `sla`/`load` checks (latency p95/p99, QPS, peak, stress) when set;
   - `model-online-eval-cronjob.yaml` renders only when `onlineEval.enabled: true`
     (production), with the configured `schedule`;
   - invalid `deploymentPattern` fails rendering;
