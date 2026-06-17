@@ -11,7 +11,7 @@ model:
 
 service:
   type: ClusterIP
-  port: 8080
+  port: 8000
 
 resources:
   requests:
@@ -37,7 +37,7 @@ livenessProbe:
 readinessProbe:
   enabled: true
   httpGet:
-    path: /ready
+    path: /health
     port: http
   initialDelaySeconds: 10
   periodSeconds: 5

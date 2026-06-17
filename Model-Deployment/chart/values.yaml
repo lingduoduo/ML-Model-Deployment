@@ -4,7 +4,7 @@ deploymentPattern: deploy-code
 replicaCount: 1
 
 image:
-  repository: your-docker-registry/model-server
+  repository: recsys-serve
   pullPolicy: IfNotPresent
   # Pin an immutable tag or digest per environment for safe rollbacks.
   # "latest" is a non-production default only.
@@ -59,13 +59,15 @@ writableTmp:
   sizeLimit: 1Gi
 
 container:
-  port: 8080
+  port: 8000
   command: []
   args: []
   workingDir: ""
 
 model:
-  name: sample-model
+  # Selects which checkpoint the recsys-serve API loads; emitted as the
+  # RECSYS_SERVE_MODEL env var (e.g. dssm, mlp_embedding).
+  name: dssm
   path: /models/model
   version: ""          # the model version to serve; bump to ship a new model
   pullPolicy: IfNotPresent
@@ -116,7 +118,7 @@ service:
   # Kubernetes will load-balance across healthy pod replicas behind this Service.
   # Use Ingress for external traffic and advanced routing. Use LoadBalancer only when needed.
   type: ClusterIP
-  port: 8080
+  port: 8000
   annotations: {}
 
 ingress:
@@ -163,7 +165,8 @@ livenessProbe:
 readinessProbe:
   enabled: true
   httpGet:
-    path: /ready
+    # recsys-serve exposes /health but not /ready; reuse /health for readiness.
+    path: /health
     port: http
   initialDelaySeconds: 10
   periodSeconds: 5

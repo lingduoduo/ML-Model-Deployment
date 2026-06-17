@@ -106,7 +106,8 @@ spec:
               containerPort: {{ .Values.container.port }}
               protocol: TCP
           env:
-            - name: MODEL_NAME
+            # recsys-serve selects the live checkpoint from RECSYS_SERVE_MODEL.
+            - name: RECSYS_SERVE_MODEL
               value: {{ .Values.model.name | quote }}
             - name: MODEL_PATH
               value: {{ .Values.model.path | quote }}
