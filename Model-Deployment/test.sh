@@ -69,7 +69,7 @@ image:
 container:
   command: ["/bin/sh","-c"]
   args:
-    - mkdir -p /tmp/www && printf ok > /tmp/www/health && printf ok > /tmp/www/ready && httpd -f -p 8080 -h /tmp/www
+    - mkdir -p /tmp/www && printf ok > /tmp/www/health && printf ok > /tmp/www/ready && httpd -f -p 8000 -h /tmp/www
 scheduledJobs:
   - name: demo-trainer
     schedule: "* * * * *"

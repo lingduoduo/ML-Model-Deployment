@@ -54,20 +54,23 @@ dev→staging→prod, update the model independently:
 # 1. Render + lint the chart (no cluster needed)
 bash Model-Deployment/chart/scripts/verify-render.sh        # => All assertions passed.
 
-# 2. Install the staging release (deploy-code is the default pattern)
+# 2. Install the staging release (deploy-code is the default pattern).
+#    model.name picks the checkpoint via RECSYS_SERVE_MODEL (e.g. dssm, mlp_embedding).
 helm install model-release Model-Deployment/chart \
   -n model-serving --create-namespace \
   -f Model-Deployment/chart/values-staging.yaml \
-  --set image.repository=ghcr.io/example/model-server \
+  --set image.repository=recsys-serve \
   --set image.tag=v1.0.0 \
-  --set model.version=2026-06-01
+  --set model.name=mlp_embedding
 
-# 3. Confirm it's up and test connectivity
+# 3. Confirm it's up, test connectivity, and query a recommendation
 kubectl rollout status deploy/model-release-model-deployment -n model-serving
 helm test model-release -n model-serving
+kubectl port-forward -n model-serving svc/model-release-model-deployment 8000:8000 &
+curl "http://localhost:8000/recommend?user_id=user_new_hire_01&k=5"
 ```
 
-From here: ship a new model with no code change (`--set model.version=<new>`),
+From here: switch the live model with no code change (`--set model.name=<name>`),
 promote the image across environments, or add gates — see
 [Promotion lifecycle](#promotion-lifecycle-step-by-step) and [Install](#install).
 
@@ -132,7 +135,7 @@ Key values (see `chart/values.yaml` for the full set and inline docs):
 | Value | Default | Purpose |
 |-------|---------|---------|
 | `deploymentPattern` | `deploy-code` | `deploy-code` \| `deploy-models` |
-| `image.repository` / `image.tag` | `your-docker-registry/model-server` / `latest` | serving image; pin an immutable tag/digest per env |
+| `image.repository` / `image.tag` | `recsys-serve` / `latest` | serving image; pin an immutable tag/digest per env |
 | `model.name` / `model.path` | `sample-model` / `/models/model` | model identity + mount path the server reads |
 | `model.version` | `""` | model version to serve; bump to ship a new model (rolls only the model) |
 | `environment` | `""` | `dev` \| `staging` \| `production` (set per env file) |
@@ -250,7 +253,7 @@ helm install my-release Model-Deployment/chart
 ```bash
 helm install model-release Model-Deployment/chart \
   -f Model-Deployment/chart/values-staging.yaml \
-  --set image.repository=ghcr.io/example/model-server \
+  --set image.repository=recsys-serve \
   --set image.tag=<immutable-tag> \
   --set model.version=<model-version>
 ```
@@ -331,7 +334,7 @@ selects the env values file and wires pattern/gate/rollout from env vars, via
 ```bash
 DEPLOY_ENVIRONMENT=staging \      # dev | staging | production  (required)
 DEPLOYMENT_PATTERN=deploy-code \  # deploy-code | deploy-models (required)
-IMAGE_REPOSITORY=ghcr.io/example/model-server \  # required
+IMAGE_REPOSITORY=recsys-serve \  # required
 IMAGE_TAG=<immutable-tag> \       # required
 MODEL_VERSION=<model-version> \   # required
 ROLLOUT_STRATEGY=gradual \        # optional (gradual|ab-testing|shadow)
@@ -414,7 +417,7 @@ the init container's default command needs a shell (a from-scratch image like
 colima start
 minikube start --driver=docker
 
-# Install with a runnable image; busybox httpd serves /health, /ready, / on :8080
+# Install with a runnable image; busybox httpd serves /health, /ready, / on :8000
 helm upgrade --install demo Model-Deployment/chart \
   -n model-demo --create-namespace \
   -f Model-Deployment/chart/values-staging.yaml \
@@ -422,7 +425,7 @@ helm upgrade --install demo Model-Deployment/chart \
   --set model.version=2026-06-01 \
   --set-string 'container.command[0]=/bin/sh' \
   --set-string 'container.command[1]=-c' \
-  --set-string 'container.command[2]=mkdir -p /tmp/www && printf ok > /tmp/www/health && printf ok > /tmp/www/ready && printf hello > /tmp/www/index.html && httpd -f -p 8080 -h /tmp/www'
+  --set-string 'container.command[2]=mkdir -p /tmp/www && printf ok > /tmp/www/health && printf ok > /tmp/www/ready && printf hello > /tmp/www/index.html && httpd -f -p 8000 -h /tmp/www'
 
 kubectl rollout status deploy/demo-model-deployment -n model-demo
 kubectl get pods -n model-demo -o wide

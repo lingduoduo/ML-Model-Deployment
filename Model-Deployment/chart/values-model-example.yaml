@@ -4,7 +4,7 @@ image:
   tag: "1.0.0"
 
 container:
-  port: 8080
+  port: 8000
   command:
     - python
   args:
@@ -14,7 +14,7 @@ container:
     - --host
     - 0.0.0.0
     - --port
-    - "8080"
+    - "8000"
 
 model:
   name: sentiment-classifier
@@ -26,12 +26,12 @@ env:
 
 service:
   type: ClusterIP
-  port: 8080
+  port: 8000
 
 readinessProbe:
   enabled: true
   httpGet:
-    path: /ready
+    path: /health
     port: http
 
 livenessProbe:

@@ -23,7 +23,7 @@
 {{- end }}
 
 3. Inspect the model-specific environment in the pod:
-  kubectl exec --namespace {{ .Release.Namespace }} deploy/{{ include "model-deployment.fullname" . }} -- printenv MODEL_NAME MODEL_PATH
+  kubectl exec --namespace {{ .Release.Namespace }} deploy/{{ include "model-deployment.fullname" . }} -- printenv RECSYS_SERVE_MODEL MODEL_PATH
 
 4. Security baseline (defaults):
   - runAsNonRoot: {{ .Values.podSecurityContext.runAsNonRoot }}
