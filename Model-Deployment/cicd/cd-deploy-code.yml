@@ -1,0 +1,84 @@
+name: CD deploy-code
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_repository:
+        description: Container image repository
+        required: true
+        default: ghcr.io/example/model-server
+        type: string
+      image_tag:
+        description: Immutable image tag/digest to promote
+        required: true
+        type: string
+      model_version:
+        description: Model version to serve (independent of code)
+        required: true
+        type: string
+      rollout_strategy:
+        description: Production rollout strategy
+        required: true
+        default: gradual
+        type: choice
+        options: [gradual, ab-testing, shadow]
+
+env:
+  CHART_PATH: Model-Deployment/chart
+  RELEASE_NAME: model-release
+  DEPLOYMENT_PATTERN: deploy-code
+
+jobs:
+  dev:
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v5
+      - uses: azure/setup-helm@v5
+        with: { version: v3.15.4 }
+      - name: Deploy to dev
+        env:
+          DEPLOY_ENVIRONMENT: dev
+          IMAGE_REPOSITORY: ${{ github.event.inputs.image_repository }}
+          IMAGE_TAG: ${{ github.event.inputs.image_tag }}
+          MODEL_VERSION: ${{ github.event.inputs.model_version }}
+        run: bash Model-Deployment/deploy/deploy.sh
+      - name: Smoke test
+        run: echo "run dev smoke test here"
+
+  staging:
+    needs: dev
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v5
+      - uses: azure/setup-helm@v5
+        with: { version: v3.15.4 }
+      - name: Deploy same image to staging (subset)
+        env:
+          DEPLOY_ENVIRONMENT: staging
+          IMAGE_REPOSITORY: ${{ github.event.inputs.image_repository }}
+          IMAGE_TAG: ${{ github.event.inputs.image_tag }}
+          MODEL_VERSION: ${{ github.event.inputs.model_version }}
+        run: bash Model-Deployment/deploy/deploy.sh
+      - name: Integration test on data subset
+        run: echo "run staging integration test here"
+
+  production:
+    needs: staging
+    runs-on: ubuntu-latest
+    environment: production   # require manual approval via GitHub environment protection
+    steps:
+      - uses: actions/checkout@v5
+      - uses: azure/setup-helm@v5
+        with: { version: v3.15.4 }
+      - name: Deploy to production with in-prod compare gate
+        env:
+          DEPLOY_ENVIRONMENT: production
+          IMAGE_REPOSITORY: ${{ github.event.inputs.image_repository }}
+          IMAGE_TAG: ${{ github.event.inputs.image_tag }}
+          MODEL_VERSION: ${{ github.event.inputs.model_version }}
+          ROLLOUT_STRATEGY: ${{ github.event.inputs.rollout_strategy }}
+          GATE_ENABLED: "true"
+          GATE_MODE: compare
+        run: bash Model-Deployment/deploy/deploy.sh
