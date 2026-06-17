@@ -225,3 +225,10 @@ modelGate:
     stress:
       enabled: false
       multiplier: 2
+
+# Online model evaluation (§6a). Opt-in recurring re-score of the live model.
+onlineEval:
+  enabled: false
+  schedule: "0 * * * *"
+  holdoutUri: ""
+  driftAction: alert   # alert | trigger-refresh

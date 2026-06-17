@@ -1,0 +1,40 @@
+{{- if .Values.onlineEval.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "model-deployment.fullname" . }}-online-eval
+  labels:
+    {{- include "model-deployment.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.onlineEval.schedule | quote }}
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        metadata:
+          labels:
+            {{- include "model-deployment.selectorLabels" . | nindent 12 }}
+        spec:
+          restartPolicy: Never
+          serviceAccountName: {{ include "model-deployment.serviceAccountName" . }}
+          securityContext:
+            {{- toYaml .Values.podSecurityContext | nindent 12 }}
+          containers:
+            - name: online-eval
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              securityContext:
+                {{- toYaml .Values.securityContext | nindent 16 }}
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -e
+                  echo "[online-eval] scoring live model {{ .Values.model.version }} on ${HOLDOUT_URI}"
+                  echo "[online-eval] driftAction=${DRIFT_ACTION}"
+              env:
+                - name: HOLDOUT_URI
+                  value: {{ .Values.onlineEval.holdoutUri | quote }}
+                - name: DRIFT_ACTION
+                  value: {{ .Values.onlineEval.driftAction | quote }}
+{{- end }}
