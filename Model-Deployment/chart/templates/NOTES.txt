@@ -35,3 +35,8 @@
   any other path, the process will fail. Add those paths via volumes/volumeMounts,
   or set securityContext.readOnlyRootFilesystem=false.
 {{- end }}
+
+{{ if .Values.modelStore.uri }}
+Model: pulling version "{{ .Values.model.version }}" from {{ .Values.modelStore.uri }} (catalog: {{ .Values.modelStore.catalog }}).
+{{- end }}
+Pattern: {{ .Values.deploymentPattern }} | rollout: {{ .Values.rolloutStrategy }}{{ if .Values.modelGate.enabled }} | gate: {{ .Values.modelGate.mode }}{{ end }}.
