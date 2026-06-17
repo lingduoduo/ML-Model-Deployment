@@ -1,0 +1,73 @@
+name: CD deploy-models
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_repository:
+        description: Serving image repository (promoted separately via deploy-code)
+        required: true
+        default: ghcr.io/example/model-server
+        type: string
+      image_tag:
+        description: Current serving image tag (fixed while the model is promoted)
+        required: true
+        type: string
+      model_version:
+        description: Model artifact version to promote dev->staging->prod
+        required: true
+        type: string
+
+env:
+  CHART_PATH: Model-Deployment/chart
+  RELEASE_NAME: model-release
+  DEPLOYMENT_PATTERN: deploy-models
+
+jobs:
+  dev:
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v5
+      - uses: azure/setup-helm@v5
+        with: { version: v3.15.4 }
+      - name: Stage model in dev
+        env:
+          DEPLOY_ENVIRONMENT: dev
+          IMAGE_REPOSITORY: ${{ github.event.inputs.image_repository }}
+          IMAGE_TAG: ${{ github.event.inputs.image_tag }}
+          MODEL_VERSION: ${{ github.event.inputs.model_version }}
+        run: bash Model-Deployment/deploy/deploy.sh
+
+  staging:
+    needs: dev
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v5
+      - uses: azure/setup-helm@v5
+        with: { version: v3.15.4 }
+      - name: Promote model to staging + run validation gate
+        env:
+          DEPLOY_ENVIRONMENT: staging
+          IMAGE_REPOSITORY: ${{ github.event.inputs.image_repository }}
+          IMAGE_TAG: ${{ github.event.inputs.image_tag }}
+          MODEL_VERSION: ${{ github.event.inputs.model_version }}
+          GATE_ENABLED: "true"
+          GATE_MODE: validate
+        run: bash Model-Deployment/deploy/deploy.sh
+
+  production:
+    needs: staging
+    runs-on: ubuntu-latest
+    environment: production   # manual approval gate
+    steps:
+      - uses: actions/checkout@v5
+      - uses: azure/setup-helm@v5
+        with: { version: v3.15.4 }
+      - name: Deploy validated model to production
+        env:
+          DEPLOY_ENVIRONMENT: production
+          IMAGE_REPOSITORY: ${{ github.event.inputs.image_repository }}
+          IMAGE_TAG: ${{ github.event.inputs.image_tag }}
+          MODEL_VERSION: ${{ github.event.inputs.model_version }}
+        run: bash Model-Deployment/deploy/deploy.sh

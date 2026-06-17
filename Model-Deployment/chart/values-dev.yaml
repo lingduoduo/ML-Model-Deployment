@@ -1,0 +1,20 @@
+environment: dev
+replicaCount: 1
+
+# Override tag with an immutable image tag or digest in CI/CD.
+image:
+  repository: ghcr.io/example/model-server
+  tag: latest
+
+model:
+  name: dev-model
+  path: /models/model
+  version: ""
+
+# dev catalog: open read/write for developers (access enforced out-of-band).
+modelStore:
+  catalog: dev
+  uri: s3://ml-dev/model-server
+
+ingress:
+  enabled: false

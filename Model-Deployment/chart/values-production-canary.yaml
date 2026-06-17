@@ -1,0 +1,67 @@
+replicaCount: 1
+
+# Override tag with an immutable image tag or digest in CI/CD.
+image:
+  repository: ghcr.io/example/model-server
+  tag: latest
+
+nameOverride: canary
+
+model:
+  name: production-model-canary
+  path: /models/model
+
+service:
+  type: ClusterIP
+  port: 8080
+
+podLabels:
+  track: canary
+  version: canary
+
+podAnnotations:
+  canary: "true"
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+# Health checks for canary
+startupProbe:
+  enabled: true
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 0
+  periodSeconds: 10
+  failureThreshold: 30
+
+livenessProbe:
+  enabled: true
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  enabled: true
+  httpGet:
+    path: /ready
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 2
+
+environment: production
+
+modelStore:
+  catalog: prod
+  uri: s3://ml-prod/model-server

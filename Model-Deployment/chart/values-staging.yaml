@@ -1,0 +1,56 @@
+replicaCount: 1
+
+# Override tag with an immutable image tag or digest in CI/CD.
+image:
+  repository: ghcr.io/example/model-server
+  tag: latest
+
+model:
+  name: staging-model
+  path: /models/model
+
+service:
+  type: ClusterIP
+  port: 8080
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+# Enable startup probe for slow-starting models in staging
+startupProbe:
+  enabled: true
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 0
+  periodSeconds: 10
+  failureThreshold: 30
+
+ingress:
+  enabled: false
+
+environment: staging
+
+# staging catalog: limited write (admins + CI service principals); read for debugging.
+modelStore:
+  catalog: staging
+  uri: s3://ml-staging/model-server
+
+# Stakeholder SLAs exercised by the gate's load testing in staging (§6a).
+modelGate:
+  sla:
+    medianLatencyMs: 200
+    p95LatencyMs: 500
+    p99LatencyMs: 800
+    minQps: 50
+    errorRateMax: 0.01
+  load:
+    peakQps: 100
+    stress:
+      enabled: true
+      multiplier: 2

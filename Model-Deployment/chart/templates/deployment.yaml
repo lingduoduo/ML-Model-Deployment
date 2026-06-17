@@ -1,0 +1,202 @@
+{{- include "model-deployment.validate" . -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "model-deployment.fullname" . }}
+  labels:
+    {{- include "model-deployment.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "model-deployment.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- if .Values.model.version }}
+        model.version: {{ .Values.model.version | quote }}
+        {{- end }}
+        {{- if .Values.modelStore.catalog }}
+        model.catalog: {{ .Values.modelStore.catalog | quote }}
+        {{- end }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- if .Values.deployTimestamp.enabled }}
+        model-deployment.io/deploy-timestamp: {{ now | date "2006-01-02T15:04:05Z07:00" | quote }}
+        {{- end }}
+      labels:
+        {{- include "model-deployment.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        version: {{ .Values.image.tag | quote }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "model-deployment.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- if .Values.modelStore.uri }}
+      initContainers:
+        - name: model-pull
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          {{- if .Values.modelStore.pullCommand }}
+          command:
+            {{- toYaml .Values.modelStore.pullCommand | nindent 12 }}
+          {{- else }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              echo "[model-pull] fetching ${MODEL_URI} -> ${MODEL_DEST}"
+              if command -v model-pull >/dev/null 2>&1; then
+                model-pull "${MODEL_URI}" "${MODEL_DEST}"
+              else
+                echo "[model-pull] override modelStore.pullCommand for your backend" >&2
+              fi
+          {{- end }}
+          env:
+            - name: MODEL_URI
+              value: "{{ .Values.modelStore.uri }}/{{ .Values.model.version }}"
+            - name: MODEL_DEST
+              value: {{ .Values.modelStore.mountPath | quote }}
+          {{- if .Values.modelStore.pullSecretName }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.modelStore.pullSecretName }}
+          {{- end }}
+          volumeMounts:
+            {{- if .Values.persistence.enabled }}
+            - name: model-storage
+              mountPath: {{ .Values.persistence.mountPath }}
+            {{- else }}
+            - name: model-data
+              mountPath: {{ .Values.modelStore.mountPath }}
+            {{- end }}
+      {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- with .Values.container.workingDir }}
+          workingDir: {{ . }}
+          {{- end }}
+          {{- with .Values.container.command }}
+          command:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.container.args }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.container.port }}
+              protocol: TCP
+          env:
+            - name: MODEL_NAME
+              value: {{ .Values.model.name | quote }}
+            - name: MODEL_PATH
+              value: {{ .Values.model.path | quote }}
+            {{- with .Values.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- if or .Values.envFrom (and .Values.configMap.enabled .Values.configMap.data) (and .Values.secretEnv.enabled .Values.secretEnv.data) }}
+          envFrom:
+            {{- with .Values.envFrom }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- if and .Values.configMap.enabled .Values.configMap.data }}
+            - configMapRef:
+                name: {{ include "model-deployment.fullname" . }}-config
+            {{- end }}
+            {{- if and .Values.secretEnv.enabled .Values.secretEnv.data }}
+            - secretRef:
+                name: {{ include "model-deployment.fullname" . }}-env
+            {{- end }}
+          {{- end }}
+          {{- if .Values.livenessProbe.enabled }}
+          livenessProbe:
+            {{- omit .Values.livenessProbe "enabled" | toYaml | nindent 12 }}
+          {{- end }}
+          {{- if .Values.readinessProbe.enabled }}
+          readinessProbe:
+            {{- omit .Values.readinessProbe "enabled" | toYaml | nindent 12 }}
+          {{- end }}
+          {{- if .Values.startupProbe.enabled }}
+          startupProbe:
+            {{- omit .Values.startupProbe "enabled" | toYaml | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          {{- if or .Values.persistence.enabled .Values.writableTmp.enabled .Values.volumeMounts .Values.modelStore.uri }}
+          volumeMounts:
+            {{- if .Values.persistence.enabled }}
+            - name: model-storage
+              mountPath: {{ .Values.persistence.mountPath }}
+            {{- else if .Values.modelStore.uri }}
+            - name: model-data
+              mountPath: {{ .Values.modelStore.mountPath }}
+            {{- end }}
+            {{- if .Values.writableTmp.enabled }}
+            - name: tmp
+              mountPath: /tmp
+            {{- end }}
+            {{- with .Values.volumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- end }}
+      {{- if or .Values.persistence.enabled .Values.writableTmp.enabled .Values.volumes .Values.modelStore.uri }}
+      volumes:
+        {{- if .Values.persistence.enabled }}
+        - name: model-storage
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.existingClaim | default (printf "%s-model-storage" (include "model-deployment.fullname" .)) }}
+        {{- end }}
+        {{- if and .Values.modelStore.uri (not .Values.persistence.enabled) }}
+        - name: model-data
+          emptyDir: {}
+        {{- end }}
+        {{- if .Values.writableTmp.enabled }}
+        - name: tmp
+          emptyDir:
+            sizeLimit: {{ .Values.writableTmp.sizeLimit }}
+        {{- end }}
+        {{- with .Values.volumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- /* kindOf guard: `--set 'topologySpreadConstraints=[]'` passes the string "[]", not a slice; range on a string fails. */}}
+      {{- if and (eq (kindOf .Values.topologySpreadConstraints) "slice") .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- range .Values.topologySpreadConstraints }}
+        - {{ omit . "labelSelector" | toYaml | nindent 10 | trim }}
+          labelSelector:
+            matchLabels:
+              {{- include "model-deployment.selectorLabels" $ | nindent 14 }}
+        {{- end }}
+      {{- end }}

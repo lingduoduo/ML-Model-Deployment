@@ -1,0 +1,67 @@
+{{- if .Values.modelGate.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "model-deployment.fullname" . }}-gate-{{ .Values.modelGate.mode }}
+  labels:
+    {{- include "model-deployment.labels" . | nindent 4 }}
+    model-deployment.io/gate: {{ .Values.modelGate.mode | quote }}
+  annotations:
+    "helm.sh/hook": pre-upgrade,pre-install
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: {{ .Values.modelGate.backoffLimit }}
+  template:
+    metadata:
+      labels:
+        {{- include "model-deployment.selectorLabels" . | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ include "model-deployment.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: model-gate
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          {{- if .Values.modelGate.command }}
+          command:
+            {{- toYaml .Values.modelGate.command | nindent 12 }}
+          {{- else }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              echo "[gate] mode=${GATE_MODE} pattern={{ .Values.deploymentPattern }}"
+              {{- if .Values.modelGate.readinessChecks }}
+              echo "[gate] readiness checks: config scripts, dependencies, input schema"
+              {{- end }}
+              echo "[gate] sla median=${SLA_MEDIAN_MS}ms p95=${SLA_P95_MS}ms p99=${SLA_P99_MS}ms minQps=${SLA_MIN_QPS} errMax=${SLA_ERR_MAX}"
+              echo "[gate] load peakQps=${LOAD_PEAK_QPS} stress={{ .Values.modelGate.load.stress.enabled }}"
+              echo "[gate] override modelGate.command to run real checks against ${HOLDOUT_URI}; verdict -> ${VERDICT_SINK}"
+          {{- end }}
+          env:
+            - name: GATE_MODE
+              value: {{ .Values.modelGate.mode | quote }}
+            - name: MODEL_VERSION
+              value: {{ .Values.model.version | quote }}
+            - name: HOLDOUT_URI
+              value: {{ .Values.modelGate.holdoutUri | quote }}
+            - name: VERDICT_SINK
+              value: {{ .Values.modelGate.verdictSink | quote }}
+            - name: SLA_MEDIAN_MS
+              value: {{ .Values.modelGate.sla.medianLatencyMs | quote }}
+            - name: SLA_P95_MS
+              value: {{ .Values.modelGate.sla.p95LatencyMs | quote }}
+            - name: SLA_P99_MS
+              value: {{ .Values.modelGate.sla.p99LatencyMs | quote }}
+            - name: SLA_MIN_QPS
+              value: {{ .Values.modelGate.sla.minQps | quote }}
+            - name: SLA_ERR_MAX
+              value: {{ .Values.modelGate.sla.errorRateMax | quote }}
+            - name: LOAD_PEAK_QPS
+              value: {{ .Values.modelGate.load.peakQps | quote }}
+{{- end }}
