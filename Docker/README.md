@@ -66,18 +66,19 @@ docker run hello-world
 ### 2. (GPU only) Install the NVIDIA Container Toolkit on the host
 
 This step lets containers see your GPU. **macOS and Windows (WSL2) users can
-skip it** — Docker Desktop handles GPU passthrough differently. The toolkit
-belongs on the **host** that owns the Docker daemon — it's what exposes the GPU
-to containers, so it can't be baked into an image.
+skip it** — Docker Desktop handles GPU passthrough differently. The toolkit runs
+on the **host** that owns the Docker daemon: it's what exposes the GPU to
+containers, so it can't be baked into an image.
+
+On the Linux host (Ubuntu/Debian):
 
 ```bash
-sudo apt-get update
-sudo apt-get install -y --no-install-recommends ca-certificates curl gnupg2
-curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey \
-  | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
-curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list \
-  | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' \
-  | sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+curl -s -L https://nvidia.github.io/libnvidia-container/$distribution/libnvidia-container.list | \
+    sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+    sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+
 sudo apt-get update
 sudo apt-get install -y nvidia-container-toolkit
 sudo nvidia-ctk runtime configure --runtime=docker
@@ -94,12 +95,34 @@ If you see your GPU listed, the toolkit is working.
 
 ### 3. Build the image
 
+Choosing the right base image saves hours of debugging.
+
+nvidia/cuda:12.4.1-devel-ubuntu22.04
+  Full CUDA toolkit. Compilers included.
+  Use for: building packages that need nvcc (flash-attn, bitsandbytes)
+  Size: ~4 GB
+
+nvidia/cuda:12.4.1-runtime-ubuntu22.04
+  CUDA runtime only. No compilers.
+  Use for: running pre-built code
+  Size: ~1.5 GB
+
+pytorch/pytorch:2.3.1-cuda12.4-cudnn9-runtime
+  PyTorch pre-installed on top of CUDA.
+  Use for: skipping the PyTorch install step
+  Size: ~6 GB
+
+python:3.12-slim
+  No CUDA. CPU only.
+  Use for: inference on CPU, lightweight tools
+  Size: ~150 MB
+
 ```bash
 # CPU
 docker build -t ai-dev Docker/cpu
 
 # GPU
-docker build -t ai-dev-gpu Docker/gpu
+docker build -t ai-dev -f Dockerfile .
 ```
 
 The first build takes a while (downloading the base image + PyTorch).
