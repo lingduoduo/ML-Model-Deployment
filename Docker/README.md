@@ -13,7 +13,7 @@ matches your hardware:
 | Path | What it is |
 |------|-----------|
 | [`cpu/`](cpu/) | **CPU** stack — [`Dockerfile`](cpu/Dockerfile) (`python:3.12-slim` + PyTorch CPU build) and [`docker-compose.yml`](cpu/docker-compose.yml). Runs anywhere. |
-| [`gpu/`](gpu/) | **GPU** stack — [`Dockerfile`](gpu/Dockerfile) (`nvidia/cuda:12.4.1-devel` + CUDA PyTorch `cu124`, also bundles the NVIDIA Container Toolkit so `nvidia-ctk` is available inside the image) and [`docker-compose.yml`](gpu/docker-compose.yml) with an NVIDIA device reservation. |
+| [`gpu/`](gpu/) | **GPU** stack — [`Dockerfile`](gpu/Dockerfile) (`nvidia/cuda:12.4.1-devel` + CUDA PyTorch `cu124`) and [`docker-compose.yml`](gpu/docker-compose.yml) with an NVIDIA device reservation. Requires the host NVIDIA Container Toolkit (step 2). |
 | `Docker_for_ML.md`, `docker.md`, `docker-notes.md`, `Intro-Docker.md`, `Jenkins.md` | Longer-form reference notes. |
 
 Each folder's `docker-compose.yml` runs a two-service dev stack: the `ai-dev`
@@ -66,10 +66,9 @@ docker run hello-world
 ### 2. (GPU only) Install the NVIDIA Container Toolkit on the host
 
 This step lets containers see your GPU. **macOS and Windows (WSL2) users can
-skip it** — Docker Desktop handles GPU passthrough differently. It must run on
-the Linux host that owns the Docker daemon (installing the toolkit *inside* an
-image, as [`gpu/Dockerfile`](gpu/Dockerfile) does, gives you the `nvidia-ctk`
-binary but does **not** expose host GPUs — the host install below is what does).
+skip it** — Docker Desktop handles GPU passthrough differently. The toolkit
+belongs on the **host** that owns the Docker daemon — it's what exposes the GPU
+to containers, so it can't be baked into an image.
 
 ```bash
 sudo apt-get update
