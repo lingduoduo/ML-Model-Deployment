@@ -182,14 +182,19 @@ docker compose down
 docker compose down -v
 ```
 
-**To run the GPU image under Compose**, point the build at the GPU Dockerfile
-and reserve a device:
+**To run the GPU image under Compose**, use
+[`docker-compose.gpu.yml`](docker-compose.gpu.yml) — same stack, but it builds
+the GPU Dockerfile and reserves an NVIDIA device (requires the host NVIDIA
+Container Toolkit from step 2):
+
+```bash
+cd Docker
+docker compose -f docker-compose.gpu.yml up -d
+```
+
+The device reservation it adds:
 
 ```yaml
-  ai-dev:
-    build:
-      context: .
-      dockerfile: Dockerfile.nvidia-container-toolkit
     deploy:
       resources:
         reservations:
