@@ -79,8 +79,8 @@ You can also try building the CUDA 12.4.1 Docker image in Colab:
 !docker info
 
 %cd /content/ML-Model-Deployment
-!docker build -f Docker/Dockerfile.nvidia-container-toolkit -t nvidia-toolkit-test .
-!docker run --rm nvidia-toolkit-test nvidia-ctk --version
+!docker build -t gpu-image-test Docker/gpu
+!docker run --rm gpu-image-test python -c "import torch; print(torch.__version__, torch.version.cuda)"
 ```
 
 This final GPU-in-container check may fail in Colab because Colab usually does
