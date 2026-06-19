@@ -1,243 +1,362 @@
+# Docker for ML
 
-#### What is Docker
+A small, reproducible Docker setup for ML development, plus reference notes on
+how Docker works. The goal: one container image that gives you (and your
+teammates) the exact same Python + PyTorch environment, with models and data
+mounted from the host so nothing is lost between rebuilds.
 
-- Docker is a platform that allows you to "build, shipa nd run any app, anywhere".Docker enables you to seperate your applications from your infrastructre so you can deliver software quickly.
+## What's in this directory
 
-- Docker daemon. Docker_Hosts. Docker Engine, Docker Server. Docker daemon listened for Docker API requests and manages Docker objects ushc as images, containers, networks, and volumes. A daemon can also communicate with other daemons to mange Docker servies.
+| File | What it is |
+|------|-----------|
+| [`Dockerfile`](Dockerfile) | **CPU** image — `python:3.12-slim` + PyTorch (CPU build) and the usual ML stack. ~Small, runs anywhere. |
+| [`Dockerfile.nvidia-container-toolkit`](Dockerfile.nvidia-container-toolkit) | **GPU** image — `nvidia/cuda:12.4.1-devel` + CUDA-enabled PyTorch (`cu124`). Also bundles the NVIDIA Container Toolkit so `nvidia-ctk` is available inside the image. |
+| [`docker-compose.yml`](docker-compose.yml) | Two-service dev stack: the `ai-dev` image above + a Qdrant vector database, for RAG-style work. |
+| `Docker_for_ML.md`, `docker.md`, `docker-notes.md`, `Intro-Docker.md`, `Jenkins.md` | Longer-form reference notes. |
 
-- Docker client is the primary way that many Docker users interact with Docker. When you use commands such as "docker run", the client sends these commands to docker daemon.
+The two Dockerfiles are the same image recipe with one decision swapped: **what
+to run on**.
 
-- Docker registry stores docker images. Docker Hub is a public registry that anyone can use, and Docker is configured to look for images on Docker Hub by default. A registry is where we store our images. You can host your own registry, or you can use Docker's public registry which is called DockerHub. Inside a registry, images are stored in repositories.
+| | CPU — [`Dockerfile`](Dockerfile) | GPU — [`Dockerfile.nvidia-container-toolkit`](Dockerfile.nvidia-container-toolkit) |
+|---|---|---|
+| Base image | `python:3.12-slim-bookworm` | `nvidia/cuda:12.4.1-devel-ubuntu22.04` |
+| PyTorch | `torch==2.3.1` (default CPU wheels) | `torch==2.3.1 --index-url .../whl/cu124` |
+| Needs a GPU? | No — runs on any machine | Yes — host needs an NVIDIA GPU + the Container Toolkit |
+| Approx. size | ~hundreds of MB | several GB (CUDA toolchain) |
+| Use for | inference on CPU, lightweight tools, CI | training/inference that needs CUDA |
 
-- Docker repository is a collection of different docker images with the same name, that have different tags, each tag usually represents a different version of the image. 
-  - Docker will use latest as a default tag when no tag is provided. 
-  - A lot of repositories use it to tag the most up-to-date table image.  However, this is still only. a convention and is entirely not being enforced.
-  - Images which are tagged latest will not be updated automatically when a newer version of the image is pushed to the repository.
+Both images install the same ML libraries (`numpy`, `pandas`, `scikit-learn`,
+`matplotlib`, `jupyter`, `transformers`, `datasets`, `accelerate`,
+`safetensors`), expose port `8888` for Jupyter, set `WORKDIR /workspace`, and
+declare `/workspace` and `/models` as volumes.
 
-- Docker image is a read-only template with instructions for creating a Docker container. Often, an image is based on another image, with some additional customization. Images is read-only templates used to create containers. Docker Image Layers - All changes made into the running containers will be written into the writable layer. When the container is deleted, the wirtable layer is also deleted, but the underlying image remains unchanged. Multiple containers can share access to the same underlying image.
+---
 
-- Docker container is a runnable instance of an image. By default, a conatiner is relatively well isolated from other containers and its host machine. When a container is removed, any changes to its state that are not stored in persistent storage disappear. Containers is lightweight and portable encapsulations of an environment in which to. run applications. If an image is a class, then a container is an instance of a class - a runtime object.  Container are created from images. Inside a container, if has all teh ibnaries and dependencies to run the application.
-Docker
+## Quick start
 
+### 1. Install Docker
+
+**macOS**
+
+```bash
+brew install --cask docker
+open /Applications/Docker.app
 ```
-# List running containers
-docker ps
 
-# List all images and their sizes
-docker images
+**Ubuntu**
 
-# Remove unused images (reclaim disk space)
-docker system prune -a
+```bash
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER
+# Log out and back in for the group change to take effect.
+```
 
-# Check GPU usage inside a running container
-docker exec -it <container_id> nvidia-smi
+Verify:
 
-# Copy a file from container to host
+```bash
+docker --version
+docker run hello-world
+```
+
+### 2. (GPU only) Install the NVIDIA Container Toolkit on the host
+
+This step lets containers see your GPU. **macOS and Windows (WSL2) users can
+skip it** — Docker Desktop handles GPU passthrough differently. It must run on
+the Linux host that owns the Docker daemon (installing the toolkit *inside* an
+image, as `Dockerfile.nvidia-container-toolkit` does, gives you the `nvidia-ctk`
+binary but does **not** expose host GPUs — the host install below is what does).
+
+```bash
+sudo apt-get update
+sudo apt-get install -y --no-install-recommends ca-certificates curl gnupg2
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey \
+  | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list \
+  | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' \
+  | sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+sudo apt-get update
+sudo apt-get install -y nvidia-container-toolkit
+sudo nvidia-ctk runtime configure --runtime=docker
+sudo systemctl restart docker
+```
+
+Test that containers can reach the GPU:
+
+```bash
+docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi
+```
+
+If you see your GPU listed, the toolkit is working.
+
+### 3. Build the image
+
+```bash
+# CPU
+docker build -t ai-dev -f Docker/Dockerfile .
+
+# GPU
+docker build -t ai-dev-gpu -f Docker/Dockerfile.nvidia-container-toolkit .
+```
+
+The first build takes a while (downloading the base image + PyTorch).
+Subsequent builds reuse cached layers, so only changed steps rebuild.
+
+### 4. Run it
+
+Check the install:
+
+```bash
+# CPU
+docker run --rm -it \
+  -v $(pwd):/workspace \
+  -v ~/models:/models \
+  ai-dev python -c "import torch; print(f'PyTorch {torch.__version__}, CUDA: {torch.cuda.is_available()}')"
+
+# GPU (note --gpus all)
+docker run --rm -it --gpus all \
+  -v $(pwd):/workspace \
+  -v ~/models:/models \
+  ai-dev-gpu python -c "import torch; print(f'PyTorch {torch.__version__}, CUDA: {torch.cuda.is_available()}')"
+```
+
+On the CPU image `CUDA: False` is expected; on the GPU image (with a GPU and
+`--gpus all`) you should see `CUDA: True`.
+
+Run Jupyter inside the container:
+
+```bash
+docker run --rm -it \
+  -v $(pwd):/workspace \
+  -v ~/models:/models \
+  -p 8888:8888 \
+  ai-dev jupyter notebook --ip=0.0.0.0 --port=8888 --no-browser --allow-root
+```
+
+### 5. Mount data and models as volumes
+
+Volume mounts are critical for ML work — without them, multi-GB model
+downloads vanish when the container stops.
+
+```bash
+-v $(pwd):/workspace   # your code
+-v ~/models:/models    # a shared models directory
+-v ~/datasets:/data    # datasets
+```
+
+Load from the mounted path inside your script:
+
+```python
+from transformers import AutoModel
+
+model = AutoModel.from_pretrained("/models/llama-7b")
+```
+
+The model lives on your host filesystem, so you can rebuild the container as
+often as you like without re-downloading it.
+
+### 6. Multi-service apps with Docker Compose
+
+A RAG application typically needs an inference container **and** a vector
+database. [`docker-compose.yml`](docker-compose.yml) runs both with one command.
+It builds the CPU `Dockerfile` by default and starts Qdrant alongside it.
+
+```bash
+cd Docker
+docker compose up -d
+```
+
+The `ai-dev` container can now reach Qdrant at `http://qdrant:6333` by service
+name — Compose creates a shared network automatically:
+
+```python
+from qdrant_client import QdrantClient
+
+client = QdrantClient(host="qdrant", port=6333)
+print(client.get_collections())
+```
+
+Stop everything (add `-v` to also delete the Qdrant volume):
+
+```bash
+docker compose down
+docker compose down -v
+```
+
+**To run the GPU image under Compose**, point the build at the GPU Dockerfile
+and reserve a device:
+
+```yaml
+  ai-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.nvidia-container-toolkit
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+```
+
+### 7. Useful commands
+
+```bash
+docker ps                                   # running containers
+docker images                               # all images and their sizes
+docker system prune -a                      # remove unused images (reclaim disk)
+docker exec -it <container_id> nvidia-smi   # GPU usage inside a running container
 docker cp <container_id>:/workspace/results.csv ./results.csv
-
-# View container logs
-docker logs -f <container_id>
+docker logs -f <container_id>               # follow container logs
 ```
 
-https://docs.docker.com/engine/reference/commandline/build/
+---
 
-https://docs.docker.com/engine/reference/builder/
+## Concepts reference
 
-#### Layers
+A condensed tour of the pieces these files rely on. The longer notes
+(`docker.md`, `docker-notes.md`) go deeper.
 
-A *layer* is a modification applied to a Docker image as represented by an instruction in a Dockerfile. Typically, a layer is created when a base image is changed—for example, consider a Dockerfile that looks like this:
+### Image
 
-```
+A Docker **image** is a read-only template with the instructions for creating a
+container — think of it as a recipe that produces a known system state. An image
+starts from a **base image** (often an OS such as Ubuntu, or a slim base like
+Alpine or `scratch`) and layers your application stack on top: source code,
+libraries, and dependencies. Images are built from a `Dockerfile` and published
+to a registry. Many pre-built images exist for common stacks (PyTorch, Django,
+nginx, …) so you rarely start from nothing.
+
+### Container
+
+A **container** is a running instance of an image — a process with its own
+namespace, relatively isolated from other containers and the host. If an image
+is a class, a container is an instance of it. The key difference is a thin
+read/write **container layer** on top of the image's read-only layers: all
+changes a running container makes go there. When the container is removed, that
+layer is discarded and any state not written to a volume is lost. Multiple
+containers can share the same underlying image.
+
+### Layers
+
+A **layer** is the change produced by one instruction in a `Dockerfile`. For:
+
+```dockerfile
 FROM ubuntu
-
-Run mkdir /tmp/logs
-
+RUN mkdir /tmp/logs
 RUN apt-get install vim
-
 RUN apt-get install htop
 ```
 
-Now in this case, Docker will consider Ubuntu image as the base image and add three layers:
+Docker takes `ubuntu` as the base and adds three layers (one per `RUN`). At
+build time the layers are stacked and merged via a union filesystem. Each layer
+is identified by a `sha256` hash, which makes layers easy to **cache and
+reuse**: if a layer already exists locally, Docker skips rebuilding or
+re-downloading it. This is why ordering Dockerfile steps from least- to
+most-frequently-changed speeds up rebuilds.
 
-- One layer for creating /tmp/logs
-- One other layer that installs vim
-- A third layer that installs htop
+### Bind mounts and volumes
 
-When Docker builds the image, each layer is stacked on the next and merged into a single layer using the union filesystem. Layers are uniquely identified using sha256 hashes. This makes it easy to reuse and cache them. When Docker scans a base image, it scans for the IDs of all the layers that constitute the image and begins to download the layers. If a layer exists in the local cache, it skips downloading the cached image.
+Because a container's writable layer is discarded on removal — and writing to it
+goes through a storage driver that adds overhead — Docker offers three ways to
+persist or share data with the host:
 
-#### Docker Image
+- **Volumes** — managed by Docker, stored in the host filesystem.
+- **Bind mounts** — map a specific host path into the container (what the `-v $(pwd):/workspace` flags above use).
+- **tmpfs mounts** — stored only in the host's memory.
 
-Docker image is a read-only template that forms the foundation of your application. It is very much similar to, say, a shell script that prepares a system with the desired state. In simpler terms, it’s the equivalent of a cooking recipe that has step-by-step instructions for making the final dish.
+For ML work, mounting models and datasets as volumes is what keeps large
+downloads alive across rebuilds.
 
-A Docker image starts with a base image—typically the one selected is that of an operating system are most familiar with, such as Ubuntu. On top of this image, we can add build our application stack adding the packages as and when required.
+### Registry and repository
 
-There are many pre-built images for some of the most common application stacks, such as Ruby on Rails, Django, PHP-FPM with nginx, and so on. On the advanced scale, to keep the image size as low as possible, we can also start with slim packages, such as Alpine or even Scratch, which is Docker’s reserved, minimal starting image for building other images.
+A **registry** stores images. Docker Hub is the public default; others include
+Google Container Registry, Amazon ECR, and JFrog Artifactory. Most support
+public and private visibility with access control. Within a registry, images
+live in **repositories** — a collection of images sharing a name, distinguished
+by **tags** (usually versions). Docker uses `latest` when no tag is given; by
+convention that points at the most recent image, but it is **not enforced** and
+`latest` is **not** auto-updated when a newer image is pushed. Always pin a
+version tag for reproducible builds.
 
-Docker images are created using a series of commands, known as instructions, in the Dockerfile. The presence of a Dockerfile in the root of a project repository is a good indicator that the program is container-friendly. We can build our own images from the associated Dockerfile and the built image is then published to a registry. We will take a deeper look at Dockerfile in later chapters. For now, consider the Docker image as the final executable package that contains everything to run an application. This includes the source code, the required libraries, and any dependencies.
+### Dockerfile
 
-#### Docker Container
+A `Dockerfile` is the set of instructions Docker follows to build an image.
+A typical one uses:
 
-A Docker image, when it’s run in a host computer, spawns a process with its own namespace, known as a *Docker container*. The main difference between a Docker image and a container is the presence of a thin read/write layer known as the container layer. Any changes to the filesystem of a container, such as writing new files or modifying existing files, are done to this writable container layer than the lower layers.
+- `FROM` — the base image
+- `ENV` — environment variables
+- `RUN` — shell commands (e.g. installing dependencies)
+- `CMD` / `ENTRYPOINT` — the executable to run when a container starts
 
-An important aspect to grasp is that when a container is running, the changes are applied to the container layer and when the container is stopped/killed, the container layer is not saved. Hence, all changes are lost. This aspect of containers is not understood very well and for this reason, stateful applications and those requiring persistent data were initially not recommended as containerized applications. However, with Docker Volumes, there are ways to get around this limitation. We discuss Docker Volumes more in Chapter [5](https://learning.oreilly.com/library/view/practical-docker-with/9781484237847/html/463857_1_En_5_Chapter.xhtml), “Understanding Docker Volumes”.
+The presence of a `Dockerfile` at a project's root is a good sign it's
+container-friendly.
 
-#### Bind Mounts and Volumes
+### Docker Engine
 
-We mentioned previously that when a container is running, any changes to the container are present in the container layer of the filesystem. When a container is killed, the changes are lost and the data is no longer accessible. Even when a container is running, getting data out of it is not very straightforward. In addition, writing into the container’s writable layer requires a storage driver to manage the filesystem. The storage driver provides an abstraction on the filesystem available to persist the changes and this abstraction often reduces performance.
+Docker Engine is the client-server core. It provides:
 
-For these reasons, Docker provides different ways to mount data into a container from the Docker host: volumes, bind mounts, and tmpfs volumes. While tmpfs volumes are stored in the host system’s memory only, bind mounts and volumes are stored in the host filesystem.
+- **Docker daemon** — a background service that does the heavy lifting: it
+  listens for API requests and manages images, containers, networks, and
+  volumes. It can also talk to other daemons (e.g. Datadog for metrics, Aqua
+  for security monitoring).
+- **Docker CLI** — the primary way you interact with Docker. Commands like
+  `docker build`, `docker pull`, `docker run`, and `docker exec` are forwarded
+  to the daemon, which does the work.
+- **Docker API** — the same operations exposed programmatically, for managing
+  containers from inside applications. For example:
 
-We explore Docker Volumes in detail in Chapter [5](https://learning.oreilly.com/library/view/practical-docker-with/9781484237847/html/463857_1_En_5_Chapter.xhtml), “Understanding Docker Volumes”.
+  ```bash
+  # Windows host (TCP endpoint)
+  curl http://localhost:2375/images/json
 
-#### Docker Registry
+  # Linux / macOS (UNIX socket)
+  curl --unix-socket /var/run/docker.sock http://localhost/images/json
+  ```
 
-We mentioned earlier that you can leverage existing images of common application stacks—have you ever wondered where these are and how you can use them in building your application? A Docker Registry is a place where you can store Docker images so that they can be used as the basis for an application stack. Some common examples of Docker registries include the following:
+### Docker Compose
 
-- Docker Hub
-- Google Container Registry
-- Amazon Elastic Container Registry
-- JFrog Artifactory
+Docker Compose defines and runs multi-container applications from a single
+`compose` file. It uses the same images as plain Docker but coordinates them —
+building, launching, and networking dependent and linked services (databases,
+caches, …) together. The common case is running an app alongside its dependent
+services with the same one-command simplicity as a single container, which is
+exactly what [`docker-compose.yml`](docker-compose.yml) does for `ai-dev` +
+Qdrant.
 
-Most of these registries also allow for the visibility level of the images that you have pushed to be set as public/private. Private registries will prevent your Docker images from being accessible to the public, allowing you to set up access control so that only authorized users can use your Docker image.
+---
 
-#### Dockerfile
+## Inspecting images
 
-A *Dockerfile* is a set of instructions that tells Docker how to build an image. A typical Dockerfile is made up of the following:
+`docker image ls` lists local images; `docker image inspect` dumps detailed
+metadata. Useful fields are `Config.Env`, `Config.Cmd`, and `RootFS.Layers`:
 
-- A FROM instruction that tells Docker what the base image is
-- An ENV instruction to pass an environment variable
-- A RUN instruction to run some shell commands (for example, install-dependent programs not available in the base image)
-- A CMD or an ENTRYPOINT instruction that tells Docker which executable to run when a container is started
+```bash
+docker image inspect hello-world | jq '.[].Config.Env'
+# [ "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" ]
 
-As you can see, the Dockerfile instruction set has clear and simple syntax, which makes it easy to understand. We take a deeper look at Dockerfiles later in the book.
+docker image inspect hello-world | jq '.[].Config.Cmd'
+# [ "/hello" ]
 
-#### Docker Engine
-
-Docker Engine is the core part of Docker. Docker Engine is a client-server application that provides the platform, the runtime, and the tooling for building and managing Docker images, Docker containers, and more. Docker Engine provides the following:
-
-- Docker daemon
-- Docker CLI
-- Docker API
-
-##### Docker Daemon
-
-- The Docker daemon is a service that runs in the background of the host computer and handles the heavy lifting of most of the Docker commands. The daemon listens for API requests for creating and managing Docker objects, such as containers, networks, and volumes. Docker daemon can also talk to other daemons for managing and monitoring Docker containers. Some examples of inter-daemon communication include communication Datadog for container metrics monitoring and Aqua for container security monitoring.
-
-##### Docker CLI
-
-Docker CLI is the primary way that you will interact with Docker. Docker CLI exposes a set of commands that you can provide. The Docker CLI forwards the request to Docker daemon, which then performs the necessary work.
-
-While the Docker CLI includes a huge variety of commands and sub-commands, the most common commands that we will work with in this book are as mentioned:
-
-docker build
-
-docker pull
-
-docker run
-
-docker exec
-
-```
-docker run ubuntu echo hello world
-```
-
-##### Docker API
-
-Docker also provides an API for interacting with the Docker Engine. This is particularly useful if there’s a need to create or manage containers from within applications. Almost every operation supported by the Docker CLI can be done via the API.
-
-The simplest way to get started by Docker API is to use curl to send an API request. For Windows Docker hosts, we can reach the TCP endpoint:
-```
-curl http://localhost:2375/images/json
-
-[{"Containers":-1,"Created":1511223798,"Id":"sha256:f2a91732366c0332ccd7afd2a5c4ff2b9af81f549370f7a19acd460f87686bc7","Labels":null,"ParentId":"","RepoDigests":["hello-world@sha256:66ef312bbac49c39a89aa9bcc3cb4f3c9e7de3788c944158df3ee0176d32b751"],"RepoTags":["hello-world:latest"],"SharedSize":-1,"Size":1848,"VirtualSize":1848}]
-```
-
-On Linux and Mac, the same effect can be achieved by using curl to send requests to the UNIX socket:
-
-```
-curl --unix-socket /var/run/docker.sock -X POST http://images/json
-
-[{"Containers":-1,"Created":1511223798,"Id":"sha256:f2a91732366c0332ccd7afd2a5c4ff2b9af81f549370f7a19acd460f87686bc7","Labels":null,"ParentId":"","RepoDigests":["hello-world@sha256:66ef312bbac49c39a89aa9bcc3cb4f3c9e7de3788c944158df3ee0176d32b751"],"RepoTags":["hello-world:latest"],"SharedSize":-1,"Size":1848,"VirtualSize":1848}]
+docker image inspect hello-world | jq '.[].RootFS.Layers'
+# [ "sha256:f999ae22f308fea973e5a25b57699b5daf6b0f1150ac2a5c2ea9d7fecee50fdf" ]
 ```
 
-#### Docker Compose
+Common image/container commands:
 
-Docker Compose is a tool for defining and running multi-container applications. Much like how Docker allows you to build an image for your application and run it in your container, Compose use the same images in combination with a definition file (known as the *compose file*) to build, launch, and run multi-container applications, including dependent and linked containers.
-
-The most common use case for Docker Compose is to run applications and their dependent services (such as databases and caching providers) in the same simple, streamlined manner as running a single container application. 
-
-#### HANDS-ON DOCKER
-
-Open a terminal window and type the following command:
-
-```
-docker info
-```
-
-#### Working with Docker Images
-
-Let’s look at the available Docker images. To do this, type the following command:
-
-**docker image ls** able to look at the available Docker images
-
-The **docker inspect** command provides a lot of information about the image. Of importance are the image properties **Env**, **Cmd**, and **Layers**, which tell us about these environment variables. They tell us which executable runs when the container is started and the layers associated with these environment variables.
-
-```
-docker image inspect hello-world | jq .[].Config.Env
-
-[
-
- "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-
-]
-```
-
-Here’s the startup command on the container:
-
-```
-docker image inspect hello-world | jq .[].Config.Cmd
-
-[
-
- "/hello"
-
-]
-```
-
-Here are the layers associated with the image:
-
-```
-docker image inspect hello-world | jq .[].RootFS.Layers
-
-[
-
- "sha256:f999ae22f308fea973e5a25b57699b5daf6b0f1150ac2a5c2ea9d7fecee50fdf"
-
-]
-```
-
-Every Docker image has an associated tag. Tags typically include names and version labels. While it is not mandatory to associate a version tag with a Docker image name, these tags make it easier to roll back to previous versions. Without a tag name, Docker must fetch the image with the latest tag. You can also provide a tag name to force-fetch a tagged image.
-
-Docker Store lists the different tags associated with the image. If you’re looking for a specific tag/version, it’s best to check Docker Store. Figure [2-3](https://learning.oreilly.com/library/view/practical-docker-with/9781484237847/html/463857_1_En_2_Chapter.xhtml#Fig3) shows a typical tag listing of an image.
-
-```
-docker pull nginx:1.12-alpine-perl
-
-docker pull docker-private.registry:1337/nginx
-
-docker login docker-private.registry:1337 - If the registry needs authentication, you can log in to the registry by typing docker login:
-
-docker run -p 80:80 nginx
-```
-
-To list all the running containers, you can type docker ps - docker ps
-
-```
+```bash
+docker pull nginx:1.12-alpine-perl          # pull a specific tag
+docker login docker-private.registry:1337   # authenticate to a private registry
+docker run -p 80:80 nginx                    # run, mapping host:container ports
+docker ps                                    # running containers
+docker ps -a                                 # all containers, including stopped
 docker stop <container-id>
-
-docker ps shows the active, running containers
-
-docker ps -a list all the containers
-
-docker rm <container-id>  remove the containers 
+docker rm <container-id>
 ```
+
+---
+
+## References
+
+- Build command reference — <https://docs.docker.com/reference/cli/docker/buildx/build/>
+- Dockerfile reference — <https://docs.docker.com/reference/dockerfile/>

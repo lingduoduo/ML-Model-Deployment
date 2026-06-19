@@ -40,6 +40,56 @@ Model-Deployment/test.sh            # render checks → local cluster → instal
 Model-Deployment/test.sh --render   # offline render + lint only (no cluster)
 ```
 
+## Test GPU access in Colab
+
+Google Colab is useful for checking CUDA and PyTorch GPU access, but it is not a
+full Linux GPU host for validating Docker daemon changes such as
+`nvidia-ctk runtime configure --runtime=docker` and `systemctl restart docker`.
+Use a local Linux NVIDIA machine or GPU VM for the full NVIDIA Container Toolkit
+Docker runtime test.
+
+In a Colab notebook, enable a GPU runtime, then run:
+
+```bash
+!nvidia-smi
+```
+
+Check PyTorch CUDA access:
+
+```python
+import torch
+
+print(torch.__version__)
+print(torch.version.cuda)
+print(torch.cuda.is_available())
+
+if torch.cuda.is_available():
+    print(torch.cuda.get_device_name(0))
+    x = torch.randn(1024, 1024, device="cuda")
+    print((x @ x).shape)
+```
+
+You can also try building the CUDA 12.4.1 Docker image in Colab:
+
+```bash
+!apt-get update -qq
+!apt-get install -y -qq docker.io
+!nohup dockerd > /tmp/dockerd.log 2>&1 &
+!sleep 10
+!docker info
+
+%cd /content/ML-Model-Deployment
+!docker build -f Docker/Dockerfile.nvidia-container-toolkit -t nvidia-toolkit-test .
+!docker run --rm nvidia-toolkit-test nvidia-ctk --version
+```
+
+This final GPU-in-container check may fail in Colab because Colab usually does
+not expose a normal host Docker runtime:
+
+```bash
+!docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi
+```
+
 ## Repo conventions
 
 - **Work via branch + PR**; `master` is the default branch.
