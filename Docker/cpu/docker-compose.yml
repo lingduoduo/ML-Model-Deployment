@@ -2,12 +2,10 @@ services:
   ai-dev:
     build:
       context: .
-      # CPU image by default. For GPU, swap in Dockerfile.nvidia-container-toolkit
-      # and add a deploy.resources block reserving an nvidia device (see README).
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile   # CPU image; for GPU use ../gpu/docker-compose.yml
     image: ai-dev
     volumes:
-      - ..:/workspace          # repo root
+      - ../..:/workspace       # repo root
       - ~/models:/models
       - ~/datasets:/data
     ports:

@@ -2,7 +2,7 @@ services:
   ai-dev:
     build:
       context: .
-      dockerfile: Dockerfile.nvidia-container-toolkit
+      dockerfile: Dockerfile
     image: ai-dev-gpu
     deploy:
       resources:
@@ -12,7 +12,7 @@ services:
               count: all
               capabilities: [gpu]
     volumes:
-      - ..:/workspace          # repo root
+      - ../..:/workspace       # repo root
       - ~/models:/models
       - ~/datasets:/data
     ports:

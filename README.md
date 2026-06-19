@@ -79,7 +79,7 @@ You can also try building the CUDA 12.4.1 Docker image in Colab:
 !docker info
 
 %cd /content/ML-Model-Deployment
-!docker build -f Docker/Dockerfile.nvidia-container-toolkit -t nvidia-toolkit-test .
+!docker build -t nvidia-toolkit-test Docker/gpu
 !docker run --rm nvidia-toolkit-test nvidia-ctk --version
 ```
 

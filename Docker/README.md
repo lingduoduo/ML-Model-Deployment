@@ -7,17 +7,22 @@ mounted from the host so nothing is lost between rebuilds.
 
 ## What's in this directory
 
-| File | What it is |
+The build files are split into two self-contained folders — pick the one that
+matches your hardware:
+
+| Path | What it is |
 |------|-----------|
-| [`Dockerfile`](Dockerfile) | **CPU** image — `python:3.12-slim` + PyTorch (CPU build) and the usual ML stack. ~Small, runs anywhere. |
-| [`Dockerfile.nvidia-container-toolkit`](Dockerfile.nvidia-container-toolkit) | **GPU** image — `nvidia/cuda:12.4.1-devel` + CUDA-enabled PyTorch (`cu124`). Also bundles the NVIDIA Container Toolkit so `nvidia-ctk` is available inside the image. |
-| [`docker-compose.yml`](docker-compose.yml) | Two-service dev stack: the `ai-dev` image above + a Qdrant vector database, for RAG-style work. |
+| [`cpu/`](cpu/) | **CPU** stack — [`Dockerfile`](cpu/Dockerfile) (`python:3.12-slim` + PyTorch CPU build) and [`docker-compose.yml`](cpu/docker-compose.yml). Runs anywhere. |
+| [`gpu/`](gpu/) | **GPU** stack — [`Dockerfile`](gpu/Dockerfile) (`nvidia/cuda:12.4.1-devel` + CUDA PyTorch `cu124`, also bundles the NVIDIA Container Toolkit so `nvidia-ctk` is available inside the image) and [`docker-compose.yml`](gpu/docker-compose.yml) with an NVIDIA device reservation. |
 | `Docker_for_ML.md`, `docker.md`, `docker-notes.md`, `Intro-Docker.md`, `Jenkins.md` | Longer-form reference notes. |
+
+Each folder's `docker-compose.yml` runs a two-service dev stack: the `ai-dev`
+image + a Qdrant vector database, for RAG-style work.
 
 The two Dockerfiles are the same image recipe with one decision swapped: **what
 to run on**.
 
-| | CPU — [`Dockerfile`](Dockerfile) | GPU — [`Dockerfile.nvidia-container-toolkit`](Dockerfile.nvidia-container-toolkit) |
+| | CPU — [`cpu/Dockerfile`](cpu/Dockerfile) | GPU — [`gpu/Dockerfile`](gpu/Dockerfile) |
 |---|---|---|
 | Base image | `python:3.12-slim-bookworm` | `nvidia/cuda:12.4.1-devel-ubuntu22.04` |
 | PyTorch | `torch==2.3.1` (default CPU wheels) | `torch==2.3.1 --index-url .../whl/cu124` |
@@ -63,7 +68,7 @@ docker run hello-world
 This step lets containers see your GPU. **macOS and Windows (WSL2) users can
 skip it** — Docker Desktop handles GPU passthrough differently. It must run on
 the Linux host that owns the Docker daemon (installing the toolkit *inside* an
-image, as `Dockerfile.nvidia-container-toolkit` does, gives you the `nvidia-ctk`
+image, as [`gpu/Dockerfile`](gpu/Dockerfile) does, gives you the `nvidia-ctk`
 binary but does **not** expose host GPUs — the host install below is what does).
 
 ```bash
@@ -92,10 +97,10 @@ If you see your GPU listed, the toolkit is working.
 
 ```bash
 # CPU
-docker build -t ai-dev -f Docker/Dockerfile .
+docker build -t ai-dev Docker/cpu
 
 # GPU
-docker build -t ai-dev-gpu -f Docker/Dockerfile.nvidia-container-toolkit .
+docker build -t ai-dev-gpu Docker/gpu
 ```
 
 The first build takes a while (downloading the base image + PyTorch).
@@ -157,11 +162,12 @@ often as you like without re-downloading it.
 ### 6. Multi-service apps with Docker Compose
 
 A RAG application typically needs an inference container **and** a vector
-database. [`docker-compose.yml`](docker-compose.yml) runs both with one command.
-It builds the CPU `Dockerfile` by default and starts Qdrant alongside it.
+database. Each folder's `docker-compose.yml` runs both with one command —
+[`cpu/docker-compose.yml`](cpu/docker-compose.yml) builds the CPU image and
+starts Qdrant alongside it.
 
 ```bash
-cd Docker
+cd Docker/cpu
 docker compose up -d
 ```
 
@@ -182,14 +188,13 @@ docker compose down
 docker compose down -v
 ```
 
-**To run the GPU image under Compose**, use
-[`docker-compose.gpu.yml`](docker-compose.gpu.yml) — same stack, but it builds
-the GPU Dockerfile and reserves an NVIDIA device (requires the host NVIDIA
-Container Toolkit from step 2):
+**To run the GPU image under Compose**, use the `gpu/` stack instead — same
+services, but it builds the GPU Dockerfile and reserves an NVIDIA device
+(requires the host NVIDIA Container Toolkit from step 2):
 
 ```bash
-cd Docker
-docker compose -f docker-compose.gpu.yml up -d
+cd Docker/gpu
+docker compose up -d
 ```
 
 The device reservation it adds:
@@ -326,7 +331,7 @@ Docker Compose defines and runs multi-container applications from a single
 building, launching, and networking dependent and linked services (databases,
 caches, …) together. The common case is running an app alongside its dependent
 services with the same one-command simplicity as a single container, which is
-exactly what [`docker-compose.yml`](docker-compose.yml) does for `ai-dev` +
+exactly what the `cpu/` and `gpu/` `docker-compose.yml` files do for `ai-dev` +
 Qdrant.
 
 ---
