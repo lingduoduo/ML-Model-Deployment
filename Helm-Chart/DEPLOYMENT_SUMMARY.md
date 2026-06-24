@@ -309,15 +309,15 @@ readinessProbe:
 
 ### Updated
 1. `Helm-Chart/deploy/deploy_with_helm.sh` - Major refactoring
-2. `Helm-Chart/mychart/values.yaml` - Security defaults
-3. `Helm-Chart/mychart/values-production.yaml` - PDB, security
-4. `Helm-Chart/mychart/values-staging.yaml` - Startup probe
-5. `Helm-Chart/mychart/values-production-canary.yaml` - Full config
-6. `Helm-Chart/mychart/templates/deployment.yaml` - Annotations
+2. `Model-Deployment/chart/values.yaml` - Security defaults
+3. `Model-Deployment/chart/values-production.yaml` - PDB, security
+4. `Model-Deployment/chart/values-staging.yaml` - Startup probe
+5. `Model-Deployment/chart/values-production-canary.yaml` - Full config
+6. `Model-Deployment/chart/templates/deployment.yaml` - Annotations
 7. `Helm-Chart/deploy/README.md` - Comprehensive guide
 
 ### Created New
-1. `Helm-Chart/mychart/templates/poddisruptionbudget.yaml` - HA protection
+1. `Model-Deployment/chart/templates/poddisruptionbudget.yaml` - HA protection
 2. `Helm-Chart/deploy/validate-deployment.sh` - Pre-deployment checks
 3. `Helm-Chart/deploy/rollback-deployment.sh` - Safe rollback helper
 4. `Helm-Chart/deploy/monitor-deployment.sh` - Status dashboard

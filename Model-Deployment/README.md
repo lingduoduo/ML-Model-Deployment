@@ -8,10 +8,11 @@ Self-contained Helm chart + CI/CD for serving ML models on Kubernetes. One chart
 - **deploy-models** — promote the model artifact through the environments,
   validated in staging before prod.
 
-Built on the hardened `Helm-Chart/mychart` (unmodified), it adds independent
-code/model lifecycles, catalog-segregated model stores, validation/comparison
-gates with SLA load testing, online evaluation, scheduled training jobs, and
-real-time rollout strategies.
+Building on a hardened serving baseline (security context, HPA/PDB, topology
+spread, checksum rollout), it adds independent code/model lifecycles,
+catalog-segregated model stores, validation/comparison gates with SLA load
+testing, online evaluation, scheduled training jobs, and real-time rollout
+strategies.
 
 **Run and test it in one command:** `Model-Deployment/test.sh` — see
 [Quick start](#quick-start).
@@ -154,8 +155,8 @@ Key values (see `chart/values.yaml` for the full set and inline docs):
 | `trafficRouting.provider` | `none` | `none` \| `istio` \| `gateway-api` |
 | `trafficRouting.{abSplit,gradualSteps,challengerService}` | `50` / `[10,25,50,100]` / `""` | traffic weights + challenger service name (defaults to `<fullname>-canary`) |
 
-With all defaults the chart renders the same shape as `mychart` and emits none of
-the new objects (no init container, gate Job, CronJob, or routing object).
+With all defaults the chart renders the plain hardened serving shape and emits
+none of the new objects (no init container, gate Job, CronJob, or routing object).
 
 The chart **fails `helm template`/`install`** on: invalid `deploymentPattern`,
 invalid `rolloutStrategy`, invalid `modelGate.mode` (when enabled),
@@ -466,7 +467,7 @@ The mechanics behind the values, for when you extend the chart:
 - **Online evaluation is a CronJob.** `model-online-eval-cronjob.yaml` (prod,
   opt-in) periodically re-scores the live model, complementing the deploy-time gate.
 - **Backward-safe by construction.** Every optional feature is guarded by its
-  enabling value; with defaults the chart renders the same shape as `mychart`.
+  enabling value; with defaults the chart renders the plain hardened serving shape.
 
 ## Design references
 
@@ -489,4 +490,3 @@ The full rationale and the task-by-task build are tracked in-repo:
   pull tooling. Shell-less scratch images fail the init container.
 - **Pin immutable image tags** per environment for safe rollback; `latest` is a
   non-production default only.
-- **`Helm-Chart/mychart` is untouched** — this is a separate, self-contained chart.

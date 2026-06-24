@@ -4,7 +4,7 @@ set -euo pipefail
 # Comprehensive deployment validation script
 # Checks Helm chart, values files, and deployment readiness
 
-CHART_PATH="${CHART_PATH:-Helm-Chart/mychart}"
+CHART_PATH="${CHART_PATH:-Model-Deployment/chart}"
 KUBE_NAMESPACE="${KUBE_NAMESPACE:-model-serving}"
 RELEASE_NAME="${RELEASE_NAME:-model-release}"
 
@@ -18,7 +18,7 @@ echo -e "${BLUE}=== Helm Deployment Validation ===${NC}\n"
 
 # Check 1: Helm chart syntax
 echo -e "${BLUE}1. Validating Helm chart syntax...${NC}"
-if helm lint "${CHART_PATH}" 2>&1 | grep -q "^Chart is valid"; then
+if helm lint "${CHART_PATH}" > /dev/null 2>&1; then
   echo -e "${GREEN}✓ Helm chart is valid${NC}"
 else
   echo -e "${RED}✗ Helm chart validation failed:${NC}"

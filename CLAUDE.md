@@ -12,8 +12,8 @@ affect another.
 
 | Module | What it is |
 |--------|-----------|
-| `Model-Deployment/` | Flagship Helm chart + CI/CD implementing two ML deployment patterns (`deploy-code` / `deploy-models`). Derived from `Helm-Chart/mychart` without modifying it. |
-| `Helm-Chart/mychart` | Hardened production serving chart (security context, HPA/PDB, topology spread, checksum rollout) with env values + `deploy/` operator scripts. |
+| `Model-Deployment/` | The single canonical Helm chart + CI/CD implementing two ML deployment patterns (`deploy-code` / `deploy-models`). Folds in the production hardening (security context, HPA/PDB, topology spread, checksum rollout) that previously lived in the now-removed `Helm-Chart/mychart`. |
+| `Helm-Chart/deploy/` | Operator scripts (deploy / validate / monitor / rollback) that target `Model-Deployment/chart`. The former `Helm-Chart/mychart` chart was removed during consolidation. |
 | `LLM-Inference-vLLM/` | FastAPI + vLLM LLM serving app with a CPU/mock mode, Prometheus metrics, and a load-test benchmark client. |
 | `Kubernetes/` | Standalone raw manifests (voting-app, cronjob, local model deploy/service, shadow-ingress example) — teaching/reference, not wired to the charts. |
 | `Docker/` | Docker + ML reference notes, a Dockerfile, and docker-compose. |
@@ -53,10 +53,10 @@ A single chart whose behavior is selected per release by `deploymentPattern`
   match `environment` (mapping: `dev→dev`, `staging→staging`, `production→prod`).
   When adding a new validated value, extend this single define — don't add a new one.
 - **Backward-safe defaults.** With defaults (no `modelStore.uri`, gates/online-eval
-  off, `provider: none`, empty `scheduledJobs`) the chart renders the same shape
-  as `mychart` and emits none of the optional objects (init container, gate Job,
-  CronJobs, routing object). Preserve this when adding features — guard new
-  templates behind their enabling value.
+  off, `provider: none`, empty `scheduledJobs`) the chart renders the plain
+  hardened serving shape and emits none of the optional objects (init container,
+  gate Job, CronJobs, routing object). Preserve this when adding features — guard
+  new templates behind their enabling value.
 - **Independent code/model lifecycle**: image promoted via `image.tag`; model
   pulled at runtime via `model.version` + `modelStore.uri` (an init container).
   Bumping one must not roll the other.
@@ -91,16 +91,19 @@ DEPLOY_ENVIRONMENT=staging DEPLOYMENT_PATTERN=deploy-code \
 There is no unit-test framework — `verify-render.sh` (helm template + grep
 assertions, both patterns × all envs, incl. negative cases) is the regression gate.
 
-## Helm-Chart/mychart
+## Helm-Chart/deploy (operator scripts)
+
+These scripts now target `Model-Deployment/chart` (override with `CHART_PATH`).
+The standalone `Helm-Chart/mychart` chart was removed during consolidation.
 
 ```bash
-bash Helm-Chart/mychart/scripts/verify-render.sh            # render assertions
 ./Helm-Chart/deploy/validate-deployment.sh                  # preflight checks
 DEPLOY_ENVIRONMENT=production DEPLOY_STRATEGY=canary ./Helm-Chart/deploy/run-local-deploy.sh
 ./Helm-Chart/deploy/monitor-deployment.sh                   # live dashboard
 ./Helm-Chart/deploy/rollback-deployment.sh                  # interactive rollback
 ```
 Default release/namespace used by the scripts: `model-release` / `model-serving`.
+Chart render assertions live at `Model-Deployment/chart/scripts/verify-render.sh`.
 
 ## LLM-Inference-vLLM
 

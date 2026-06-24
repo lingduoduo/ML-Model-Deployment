@@ -86,9 +86,9 @@ Use `LoadBalancer` only when you want the cloud provider to expose the service d
 
 Helm values are configured per environment:
 
-- [values-staging.yaml](../mychart/values-staging.yaml) - Single replica, basic resources
-- [values-production.yaml](../mychart/values-production.yaml) - 3 replicas, HPA, pod disruption budget, security hardening
-- [values-production-canary.yaml](../mychart/values-production-canary.yaml) - 1 replica, canary-labeled for traffic splitting
+- [values-staging.yaml](../../Model-Deployment/chart/values-staging.yaml) - Single replica, basic resources
+- [values-production.yaml](../../Model-Deployment/chart/values-production.yaml) - 3 replicas, HPA, pod disruption budget, security hardening
+- [values-production-canary.yaml](../../Model-Deployment/chart/values-production-canary.yaml) - 1 replica, canary-labeled for traffic splitting
 
 ### Deployment Optimization Tips
 
@@ -153,7 +153,7 @@ resources:
 kubectl logs -n model-serving -l app.kubernetes.io/instance=model-release-canary -f
 
 # Promote canary
-helm upgrade model-release Helm-Chart/mychart -f Helm-Chart/mychart/values-production.yaml --set image.tag=<new-tag>
+helm upgrade model-release Model-Deployment/chart -f Model-Deployment/chart/values-production.yaml --set image.tag=<new-tag>
 helm uninstall model-release-canary -n model-serving
 ```
 
@@ -216,7 +216,7 @@ helm uninstall model-release -n model-serving
 - [ ] Test database migrations before deployment
 - [ ] Document model version requirements
 - [ ] Maintain separate values files per environment
-- [values-production-canary.yaml](/Users/linghuang/Git/Model-Deployment/Helm-Chart/mychart/values-production-canary.yaml)
+- [values-production-canary.yaml](../../Model-Deployment/chart/values-production-canary.yaml)
 
 ### Secrets and variables to set in GitHub
 
@@ -243,4 +243,4 @@ This starter implements the deployment side of a canary release by creating a se
 
 Shadow deployment is also controller-specific. The most common implementation is request mirroring at the ingress or service-mesh layer. That is not baked into this repo because the exact manifest depends on whether you use NGINX Ingress, Istio, Linkerd, or another gateway.
 
-An NGINX Ingress mirroring example was added at [shadow-ingress-nginx-example.yaml](/Users/linghuang/Git/Model-Deployment/Kubernetes/shadow-ingress-nginx-example.yaml). Update the host, namespace, and mirrored service name before using it.
+An NGINX Ingress mirroring example was added at [shadow-ingress-nginx-example.yaml](../../Kubernetes/shadow-ingress-nginx-example.yaml). Update the host, namespace, and mirrored service name before using it.

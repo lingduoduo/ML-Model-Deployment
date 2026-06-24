@@ -44,6 +44,15 @@ for env in "${ENVS[@]}"; do
     grep -q 'name: model-pull' <<<"$out" || fail "${label}: missing model-pull init container"
     grep -q 'model.catalog:'   <<<"$out" || fail "${label}: missing model.catalog annotation"
 
+    # Scheduled jobs must target real adp-recommender-system modules, never the
+    # retired /opt/optimus2 + /opt/anaconda placeholders.
+    if grep -q '/opt/optimus2' <<<"$out"; then fail "${label}: stale /opt/optimus2 path"; fi
+    if grep -q '/opt/anaconda' <<<"$out"; then fail "${label}: stale /opt/anaconda path"; fi
+    if [ "$env" = "values-dev" ]; then
+      grep -q 'recsys_framework.serving.select_best_model' <<<"$out" \
+        || fail "${label}: dev scheduledJobs missing select_best_model module"
+    fi
+
     # Render must be deterministic.
     out2="$(render "${args[@]}")"
     [ "$out" = "$out2" ] || fail "${label}: render not deterministic"

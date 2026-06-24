@@ -74,10 +74,10 @@ RELEASE_NAME=model-release
 KUBE_NAMESPACE=model-serving
 TIMEOUT=5m
 IMAGE_PULL_POLICY=IfNotPresent      # IfNotPresent, Always, Never
-CONTAINER_PORT=8080
-SERVICE_PORT=8080
+CONTAINER_PORT=8000
+SERVICE_PORT=8000
 LIVENESS_PATH=/health
-READINESS_PATH=/ready
+READINESS_PATH=/health
 
 # For tracking
 GIT_COMMIT=$(git rev-parse HEAD)
@@ -307,7 +307,7 @@ kubectl describe pod <pod-name> -n model-serving
 
 # Get logs
 kubectl logs <pod-name> -n model-serving
-kubectl logs <pod-name> -n model-serving -c mychart  # specific container
+kubectl logs <pod-name> -n model-serving -c model-deployment  # specific container
 kubectl logs <pod-name> -n model-serving -f          # follow
 
 # Previous logs (if crashed)
@@ -351,31 +351,33 @@ kubectl delete namespace model-serving
 
 ```
 Helm-Chart/
-├── deploy/
+├── deploy/                          # Operator scripts (target Model-Deployment/chart)
 │   ├── deploy_with_helm.sh          # Main deployment script
 │   ├── run-local-deploy.sh          # Wrapper for local testing
 │   ├── validate-deployment.sh       # Pre-deployment validation
 │   ├── monitor-deployment.sh        # Real-time status dashboard
 │   ├── rollback-deployment.sh       # Safe rollback helper
 │   └── README.md                    # Detailed guide
-├── mychart/
-│   ├── Chart.yaml                   # Chart metadata
-│   ├── values.yaml                  # Default values
-│   ├── values-staging.yaml          # Staging environment
-│   ├── values-production.yaml       # Production environment
-│   ├── values-production-canary.yaml # Canary release config
-│   ├── values-model-example.yaml    # Example configuration
-│   └── templates/
-│       ├── deployment.yaml          # Main deployment
-│       ├── service.yaml             # Kubernetes Service
-│       ├── ingress.yaml             # Ingress (optional)
-│       ├── configmap.yaml           # ConfigMaps
-│       ├── secret.yaml              # Secrets
-│       ├── poddisruptionbudget.yaml # HA protection
-│       └── ...
 ├── OPTIMIZATION.md                  # Detailed optimization guide
 ├── DEPLOYMENT_SUMMARY.md            # This summary
 └── README.md                        # Overview
+
+# The chart itself now lives in the canonical Model-Deployment chart:
+Model-Deployment/chart/
+├── Chart.yaml                       # Chart metadata
+├── values.yaml                      # Default values
+├── values-dev.yaml                  # Dev environment (+ scheduled jobs)
+├── values-staging.yaml              # Staging environment
+├── values-production.yaml           # Production environment
+├── values-production-canary.yaml    # Canary release config
+├── values-model-example.yaml        # Example configuration
+├── scripts/verify-render.sh         # Render assertions (regression gate)
+└── templates/
+    ├── deployment.yaml              # Main deployment
+    ├── service.yaml                 # Kubernetes Service
+    ├── ingress.yaml                 # Ingress (optional)
+    ├── poddisruptionbudget.yaml     # HA protection
+    └── ...
 ```
 
 ---
@@ -434,8 +436,8 @@ kubectl get pods -n model-serving -o json | \
   jq '.items[] | {name: .metadata.name, resources: .spec.containers[].resources}'
 
 # Update resources
-helm upgrade model-release Helm-Chart/mychart \
-  -f Helm-Chart/mychart/values-production.yaml \
+helm upgrade model-release Model-Deployment/chart \
+  -f Model-Deployment/chart/values-production.yaml \
   --set resources.requests.cpu=2 \
   -n model-serving
 ```

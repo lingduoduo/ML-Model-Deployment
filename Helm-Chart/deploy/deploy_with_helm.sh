@@ -8,7 +8,7 @@ DEPLOY_ENVIRONMENT="${DEPLOY_ENVIRONMENT:-staging}"
 DEPLOY_STRATEGY="${DEPLOY_STRATEGY:-standard}"
 IMAGE_TAG="${IMAGE_TAG:?IMAGE_TAG must be set}"
 IMAGE_REPOSITORY="${IMAGE_REPOSITORY:?IMAGE_REPOSITORY must be set}"
-CHART_PATH="${CHART_PATH:-Helm-Chart/mychart}"
+CHART_PATH="${CHART_PATH:-Model-Deployment/chart}"
 RELEASE_NAME="${RELEASE_NAME:-model-release}"
 KUBE_NAMESPACE="${KUBE_NAMESPACE:-model-serving}"
 IMAGE_PULL_POLICY="${IMAGE_PULL_POLICY:-}"
@@ -79,7 +79,7 @@ verify_deployment() {
   
   while [ ${attempt} -lt ${max_attempts} ]; do
     local running=$(kubectl get pods -n "${KUBE_NAMESPACE}" \
-      -l "app.kubernetes.io/name=mychart,app.kubernetes.io/instance=${release}" \
+      -l "app.kubernetes.io/name=model-deployment,app.kubernetes.io/instance=${release}" \
       --field-selector=status.phase=Running \
       --no-headers 2>/dev/null | wc -l)
     

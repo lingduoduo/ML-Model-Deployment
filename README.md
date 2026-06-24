@@ -10,7 +10,7 @@ own README and tooling. Pick the module you need and follow its README.
 | Module | What it is | Start here |
 |--------|-----------|-----------|
 | **[Model-Deployment/](Model-Deployment/README.md)** | Flagship Helm chart + CI/CD implementing two ML deployment patterns (`deploy-code` / `deploy-models`): independent code/model lifecycles, catalog-segregated model stores, validation/compare gates with SLA load testing, online evaluation, scheduled training jobs, and real-time rollout strategies. | [Quick start](Model-Deployment/README.md#quick-start) |
-| **[Helm-Chart/](Helm-Chart/README.md)** | Hardened production serving chart (`mychart`) with per-env values, security context, HPA/PDB, topology spread, and operator scripts for deploy/monitor/rollback. | [Quick reference](Helm-Chart/QUICK_REFERENCE.md) |
+| **[Helm-Chart/](Helm-Chart/README.md)** | Operator scripts (deploy / validate / monitor / rollback) that target the canonical `Model-Deployment/chart`. The former standalone `mychart` chart was folded into that chart during consolidation. | [Quick reference](Helm-Chart/QUICK_REFERENCE.md) |
 | **[LLM-Inference-vLLM/](LLM-Inference-vLLM/README.md)** | FastAPI + vLLM LLM-serving app with a CPU/mock mode, Prometheus metrics, and a load-test benchmark client. | [Quick start](LLM-Inference-vLLM/README.md) |
 | **[Kubernetes/](Kubernetes/README.md)** | Standalone reference manifests (voting-app, cronjob, local model deploy/service, shadow-ingress). | — |
 | **[Docker/](Docker/README.md)** | Docker + ML reference notes, a Dockerfile, and docker-compose. | — |

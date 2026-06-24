@@ -68,8 +68,8 @@ kubectl delete -f Kubernetes/local-model-deployment.yaml
 | Docker | Kubernetes equivalent |
 |---|---|
 | `docker run -p 8080:8080 ...` | `helm upgrade --install ...` + `kubectl port-forward` |
-| `docker logs <container>` | `kubectl logs -n model-serving deploy/model-release-mychart` |
-| `docker exec -it <container> sh` | `kubectl exec -it -n model-serving deploy/model-release-mychart -- sh` |
+| `docker logs <container>` | `kubectl logs -n model-serving deploy/model-release-model-deployment` |
+| `docker exec -it <container> sh` | `kubectl exec -it -n model-serving deploy/model-release-model-deployment -- sh` |
 
 ### Traffic pattern
 

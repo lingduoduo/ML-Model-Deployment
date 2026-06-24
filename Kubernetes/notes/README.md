@@ -276,10 +276,10 @@ then the Kubernetes version in this repo is:
 ### 1. Deploy the same image with Helm
 
 ```bash
-helm upgrade --install model-release ./Helm-Chart/mychart \
+helm upgrade --install model-release ./Model-Deployment/chart \
   --namespace model-serving \
   --create-namespace \
-  -f ./Helm-Chart/mychart/values-staging.yaml \
+  -f ./Model-Deployment/chart/values-staging.yaml \
   --set image.repository=<registry-or-local-image> \
   --set image.tag=<tag> \
   --set container.port=8080 \
@@ -290,14 +290,14 @@ helm upgrade --install model-release ./Helm-Chart/mychart \
 
 ```bash
 kubectl get deploy,pods,svc -n model-serving
-kubectl describe deployment model-release-mychart -n model-serving
-kubectl logs -n model-serving deploy/model-release-mychart
+kubectl describe deployment model-release-model-deployment -n model-serving
+kubectl logs -n model-serving deploy/model-release-model-deployment
 ```
 
 ### 3. Access it locally with kubectl
 
 ```bash
-kubectl port-forward -n model-serving svc/model-release-mychart 8080:8080
+kubectl port-forward -n model-serving svc/model-release-model-deployment 8080:8080
 ```
 
 ### 4. Reuse the same curl commands
@@ -313,8 +313,8 @@ curl -X POST http://localhost:8080/predict \
 ### 5. Helpful command translation
 
 - `docker run -p 8080:8080 ...` -> `helm upgrade --install ...` + `kubectl port-forward`
-- `docker logs <container>` -> `kubectl logs -n model-serving deploy/model-release-mychart`
-- `docker exec -it <container> sh` -> `kubectl exec -it -n model-serving deploy/model-release-mychart -- sh`
+- `docker logs <container>` -> `kubectl logs -n model-serving deploy/model-release-model-deployment`
+- `docker exec -it <container> sh` -> `kubectl exec -it -n model-serving deploy/model-release-model-deployment -- sh`
 
 ### 6. About load balancing
 

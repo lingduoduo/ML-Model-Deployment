@@ -19,59 +19,20 @@ modelStore:
 ingress:
   enabled: false
 
-# Scheduled model-training / batch jobs (dev). Each entry renders a CronJob.
-# Schedules are staggered the way a real optimus-style crontab is: cheap jobs on
-# even hours, heavier jobs on odd hours, periodic accuracy checks. Point `image`
-# at your training image; jobs that write outside /tmp need extra volumes or a
-# relaxed securityContext.readOnlyRootFilesystem.
+# Scheduled batch jobs (dev). Each entry renders a CronJob.
+# The example runs a real job from the adp-recommender-system image
+# (Recsys-Modeling-Pipeline): WORKDIR /app, package `recsys_framework` installed
+# editable, invoked as a module. Add more entries by following the same contract
+# (`python -m recsys_framework.<module>` or the `recsys-train <job>` console
+# script). Jobs that write outside /tmp need extra volumes or a relaxed
+# securityContext.readOnlyRootFilesystem.
 scheduledJobs:
-  # Hours 0,2,4,... — click_model_lightgbm_add_ccbin_job (~5-15 min)
-  - name: click-model-lightgbm
-    schedule: "0 0-23/2 * * *"
-    image: ghcr.io/example/optimus:dev
-    command: ["/opt/anaconda/bin/python"]
-    args: ["/opt/optimus2/src/jobs/click_model_lightgbm_add_ccbin_job.py", "$(OPTIMUS_VERSION)"]
-    env:
-      - name: PYTHONPATH
-        value: /opt/optimus2
-      - name: OPTIMUS_VERSION
-        value: dev
-
-  # Hours 1,3,5,... — conversion_first_success_job
-  - name: conversion-first-success
-    schedule: "0 1-23/2 * * *"
-    image: ghcr.io/example/optimus:dev
-    command: ["/opt/anaconda/bin/python"]
-    args: ["/opt/optimus2/src/jobs/conversion_first_success_job.py", "1", "$(OPTIMUS_VERSION)"]
-    env:
-      - name: PYTHONPATH
-        value: /opt/optimus2
-      - name: OPTIMUS_VERSION
-        value: dev
-
-  # Once daily at 02:30 — click_model_new_widget_job (~20-40 min, heavier)
-  - name: click-model-new-widget
-    schedule: "30 2 * * *"
-    image: ghcr.io/example/optimus:dev
-    command: ["/opt/anaconda/bin/python"]
-    args: ["/opt/optimus2/src/jobs/click_model_new_widget_job.py"]
-    env:
-      - name: PYTHONPATH
-        value: /opt/optimus2
-    resources:
-      requests:
-        cpu: "1"
-        memory: 2Gi
-      limits:
-        cpu: "2"
-        memory: 4Gi
-
-  # Every 8 hours — model accuracy check
-  - name: model-accuracy-check
+  # Every 8 hours — pick the best-scoring model from the MLOps experiment store.
+  - name: select-best-model
     schedule: "0 */8 * * *"
-    image: ghcr.io/example/optimus:dev
-    command: ["/opt/anaconda/bin/python"]
-    args: ["/opt/optimus2/src/jobs/model_accuracy_check_job.py"]
+    image: ghcr.io/example/adp-recommender-system:dev
+    command: ["python", "-m"]
+    args: ["recsys_framework.serving.select_best_model"]
     env:
       - name: PYTHONPATH
-        value: /opt/optimus2
+        value: /app
