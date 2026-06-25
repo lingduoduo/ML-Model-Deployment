@@ -1,0 +1,130 @@
+name: Model-Deployment deploy-models
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_repository:
+        description: Serving image repository promoted separately through deploy-code
+        required: true
+        default: ghcr.io/example/model-server
+        type: string
+      image_tag:
+        description: Current serving image tag to use while promoting the model
+        required: true
+        type: string
+      model_version:
+        description: Model artifact version to promote from dev to staging to production
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  DEPLOYMENT_PATTERN: deploy-models
+  RELEASE_NAME: model-release
+  KUBE_NAMESPACE: model-serving
+
+jobs:
+  dev:
+    runs-on: ubuntu-latest
+    environment: dev
+    concurrency: model-deployment-dev
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v5
+        with:
+          version: v3.15.4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Configure kubeconfig
+        env:
+          KUBE_CONFIG_B64: ${{ secrets.KUBE_CONFIG_B64 }}
+        run: |
+          mkdir -p "$HOME/.kube"
+          printf '%s' "$KUBE_CONFIG_B64" | base64 -d > "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
+
+      - name: Stage model in dev
+        env:
+          DEPLOY_ENVIRONMENT: dev
+          IMAGE_REPOSITORY: ${{ inputs.image_repository }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+          MODEL_VERSION: ${{ inputs.model_version }}
+        run: bash Model-Deployment/deploy/deploy.sh
+
+  staging:
+    needs: dev
+    runs-on: ubuntu-latest
+    environment: staging
+    concurrency: model-deployment-staging
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v5
+        with:
+          version: v3.15.4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Configure kubeconfig
+        env:
+          KUBE_CONFIG_B64: ${{ secrets.KUBE_CONFIG_B64 }}
+        run: |
+          mkdir -p "$HOME/.kube"
+          printf '%s' "$KUBE_CONFIG_B64" | base64 -d > "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
+
+      - name: Promote model to staging with validation gate
+        env:
+          DEPLOY_ENVIRONMENT: staging
+          IMAGE_REPOSITORY: ${{ inputs.image_repository }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+          MODEL_VERSION: ${{ inputs.model_version }}
+          GATE_ENABLED: "true"
+          GATE_MODE: validate
+        run: bash Model-Deployment/deploy/deploy.sh
+
+      - name: Integration smoke test
+        run: helm test "$RELEASE_NAME" -n "$KUBE_NAMESPACE"
+
+  production:
+    needs: staging
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency: model-deployment-production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v5
+        with:
+          version: v3.15.4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Configure kubeconfig
+        env:
+          KUBE_CONFIG_B64: ${{ secrets.KUBE_CONFIG_B64 }}
+        run: |
+          mkdir -p "$HOME/.kube"
+          printf '%s' "$KUBE_CONFIG_B64" | base64 -d > "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
+
+      - name: Deploy validated model to production
+        env:
+          DEPLOY_ENVIRONMENT: production
+          IMAGE_REPOSITORY: ${{ inputs.image_repository }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+          MODEL_VERSION: ${{ inputs.model_version }}
+        run: bash Model-Deployment/deploy/deploy.sh

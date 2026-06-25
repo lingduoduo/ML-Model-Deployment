@@ -1,0 +1,149 @@
+name: Model-Deployment deploy-code
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_repository:
+        description: Container image repository
+        required: true
+        default: ghcr.io/example/model-server
+        type: string
+      image_tag:
+        description: Immutable image tag or digest to promote
+        required: true
+        type: string
+      model_version:
+        description: Model version to serve independently of code
+        required: true
+        type: string
+      rollout_strategy:
+        description: Production rollout strategy
+        required: true
+        default: gradual
+        type: choice
+        options: [gradual, ab-testing, shadow]
+
+permissions:
+  contents: read
+
+env:
+  DEPLOYMENT_PATTERN: deploy-code
+  RELEASE_NAME: model-release
+  KUBE_NAMESPACE: model-serving
+
+jobs:
+  dev:
+    runs-on: ubuntu-latest
+    environment: dev
+    concurrency: model-deployment-dev
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v5
+        with:
+          version: v3.15.4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Configure kubeconfig
+        env:
+          KUBE_CONFIG_B64: ${{ secrets.KUBE_CONFIG_B64 }}
+        run: |
+          mkdir -p "$HOME/.kube"
+          printf '%s' "$KUBE_CONFIG_B64" | base64 -d > "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
+
+      - name: Deploy to dev
+        env:
+          DEPLOY_ENVIRONMENT: dev
+          IMAGE_REPOSITORY: ${{ inputs.image_repository }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+          MODEL_VERSION: ${{ inputs.model_version }}
+        run: bash Model-Deployment/deploy/deploy.sh
+
+      - name: Smoke test
+        run: helm test "$RELEASE_NAME" -n "$KUBE_NAMESPACE"
+
+  staging:
+    needs: dev
+    runs-on: ubuntu-latest
+    environment: staging
+    concurrency: model-deployment-staging
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v5
+        with:
+          version: v3.15.4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Configure kubeconfig
+        env:
+          KUBE_CONFIG_B64: ${{ secrets.KUBE_CONFIG_B64 }}
+        run: |
+          mkdir -p "$HOME/.kube"
+          printf '%s' "$KUBE_CONFIG_B64" | base64 -d > "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
+
+      - name: Deploy same image to staging
+        env:
+          DEPLOY_ENVIRONMENT: staging
+          IMAGE_REPOSITORY: ${{ inputs.image_repository }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+          MODEL_VERSION: ${{ inputs.model_version }}
+        run: bash Model-Deployment/deploy/deploy.sh
+
+      - name: Integration smoke test
+        run: helm test "$RELEASE_NAME" -n "$KUBE_NAMESPACE"
+
+  production:
+    needs: staging
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency: model-deployment-production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v5
+        with:
+          version: v3.15.4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Configure kubeconfig
+        env:
+          KUBE_CONFIG_B64: ${{ secrets.KUBE_CONFIG_B64 }}
+        run: |
+          mkdir -p "$HOME/.kube"
+          printf '%s' "$KUBE_CONFIG_B64" | base64 -d > "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
+
+      - name: Deploy production canary
+        env:
+          DEPLOY_ENVIRONMENT: production
+          DEPLOY_VARIANT: canary
+          IMAGE_REPOSITORY: ${{ inputs.image_repository }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+          MODEL_VERSION: ${{ inputs.model_version }}
+        run: bash Model-Deployment/deploy/deploy.sh
+
+      - name: Deploy production with compare gate
+        env:
+          DEPLOY_ENVIRONMENT: production
+          IMAGE_REPOSITORY: ${{ inputs.image_repository }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+          MODEL_VERSION: ${{ inputs.model_version }}
+          ROLLOUT_STRATEGY: ${{ inputs.rollout_strategy }}
+          GATE_ENABLED: "true"
+          GATE_MODE: compare
+        run: bash Model-Deployment/deploy/deploy.sh

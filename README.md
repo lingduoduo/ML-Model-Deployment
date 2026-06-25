@@ -93,8 +93,9 @@ not expose a normal host Docker runtime:
 ## Repo conventions
 
 - **Work via branch + PR**; `master` is the default branch.
-- **CI/CD workflows live outside `.github/workflows/`** (under
-  `.github/workflows-helm-chart/` and `Model-Deployment/cicd/`), so they are run
-  manually rather than auto-triggered.
+- **Model-Deployment CI/CD runs through GitHub Actions at `.github/workflows/`**
+  and delegates to the module's local scripts. Local deployments still use
+  `Model-Deployment/test.sh` and `Model-Deployment/deploy/deploy.sh` directly.
+  Older Helm-chart workflow templates remain under `.github/workflows-helm-chart/`.
 - See **[CLAUDE.md](CLAUDE.md)** for module commands, architecture notes, and the
   non-obvious conventions in one place.

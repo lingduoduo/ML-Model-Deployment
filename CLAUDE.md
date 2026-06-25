@@ -22,11 +22,11 @@ affect another.
 
 ## Repo-wide conventions (important, non-obvious)
 
-- **CI/CD workflows are intentionally NOT under `.github/workflows/`.** They live
-  in `.github/workflows-helm-chart/` and `Model-Deployment/cicd/`, so GitHub
-  Actions does **not** auto-discover or run them on PRs. They are run manually
-  (`gh workflow run` against a copy, or by invoking the deploy/verify scripts
-  directly). Don't assume CI ran just because a PR is green.
+- **Model-Deployment CI/CD is now under `.github/workflows/`.** The runnable
+  workflows are thin GitHub Actions wrappers that call
+  `Model-Deployment/test.sh --render` and `Model-Deployment/deploy/deploy.sh`.
+  Local deployment remains script-first. Older Helm-chart workflow templates
+  still live in `.github/workflows-helm-chart/`.
 - **Helm charts have no `values.schema.json`.** IDE/YAML language servers emit
   "Property X is not allowed" errors for custom values (`deploymentPattern`,
   `modelStore`, `modelGate`, `scheduledJobs`, etc.) — these are **false
