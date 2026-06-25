@@ -1,0 +1,30 @@
+name: Model-Deployment CI
+
+on:
+  pull_request:
+    paths:
+      - "Model-Deployment/**"
+      - ".github/workflows/model-deployment-*.yml"
+  push:
+    branches: [master]
+    paths:
+      - "Model-Deployment/**"
+      - ".github/workflows/model-deployment-*.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  helm-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v5
+        with:
+          version: v3.15.4
+
+      - name: Render-only local setup check
+        run: bash Model-Deployment/test.sh --render

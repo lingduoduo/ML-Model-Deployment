@@ -114,9 +114,9 @@ Model-Deployment/
       ...
     scripts/verify-render.sh        # lint+render+assert, both patterns × all envs
   cicd/
-    ci.yml                          # lint+render verification
-    cd-deploy-code.yml              # deploy-code promotion (canary → compare gate)
-    cd-deploy-models.yml            # deploy-models promotion (staging validate gate)
+    ci.yml                          # historical workflow template; root .github/workflows is canonical
+    cd-deploy-code.yml              # historical workflow template for deploy-code
+    cd-deploy-models.yml            # historical workflow template for deploy-models
   deploy/deploy.sh                  # shared helm upgrade --install wrapper
 ```
 
@@ -324,7 +324,12 @@ bash Model-Deployment/chart/scripts/verify-render.sh
 # => All assertions passed.
 ```
 
-CI runs the same script (`cicd/ci.yml`).
+CI runs the same render-only local setup check from the repository root workflow
+(`.github/workflows/model-deployment-ci.yml`), which calls:
+
+```bash
+bash Model-Deployment/test.sh --render
+```
 
 ## Promotion (CD)
 
@@ -345,20 +350,24 @@ RELEASE_NAME=model-release KUBE_NAMESPACE=model-serving \  # optional overrides
 bash Model-Deployment/deploy/deploy.sh
 ```
 
-The two GitHub Actions workflows (manual `workflow_dispatch`, gated dev→staging→prod):
+The runnable GitHub Actions workflows live at the repository root under
+`.github/workflows/` and call the same local deployment wrapper documented
+above. The two deployment workflows are manual `workflow_dispatch` pipelines with
+gated dev→staging→prod jobs:
 
-- **`cicd/cd-deploy-code.yml`** — promotes the same image dev→staging→prod;
+- **`.github/workflows/model-deployment-deploy-code.yml`** — promotes the same image dev→staging→prod;
   production deploys the canary (`DEPLOY_VARIANT=canary`) then runs the in-prod
   `compare` gate. Inputs: `image_repository`, `image_tag`, `model_version`,
   `rollout_strategy`.
-- **`cicd/cd-deploy-models.yml`** — promotes the model artifact dev→staging→prod;
+- **`.github/workflows/model-deployment-deploy-models.yml`** — promotes the model artifact dev→staging→prod;
   staging runs the `validate` gate before the prod deploy. Inputs:
   `image_repository`, `image_tag`, `model_version`.
 
-> Note: these workflow files live under `Model-Deployment/cicd/` (the repo's
-> convention), so GitHub Actions does not auto-discover them from
-> `.github/workflows/`. Run them via `gh workflow run` against a copy placed in
-> `.github/workflows/`, or invoke `deploy/deploy.sh` directly.
+Each GitHub Environment (`dev`, `staging`, `production`) must provide a
+`KUBE_CONFIG_B64` secret containing a base64-encoded kubeconfig for the target
+cluster. Production should use GitHub Environment protection for manual approval.
+For local deployments, keep invoking `Model-Deployment/test.sh` and
+`Model-Deployment/deploy/deploy.sh` directly.
 
 ### Promotion lifecycle (step by step)
 
